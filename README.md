@@ -14,12 +14,12 @@ Ein interaktives 3D-Tennisspiel direkt im Browser, entwickelt mit **Three.js** i
 
 | Taste / Aktion | Funktion |
 |---|---|
-| **W, A, S, D** | Spieler über den Court bewegen |
-| **LEERTASTE (Space)** | **Aufschlag:** Ball hochwerfen & im grünen Bereich schlagen<br>**Rallye:** Ball schlagen (Richtung wird durch WASD mitbestimmt) |
-| **C** | Kamera wechseln (Follow-Cam an/aus – Orbit-Kamera mit Maus steuerbar) |
-| **R** | Ballwechsel / Aufschlag neu starten (Safety Reset) |
+| **W, A, S, D** / **Stick** | Spieler über den Court bewegen |
+| **LEERTASTE** / **SCHLAG-Knopf** | **Aufschlag:** Ball hochwerfen & im grünen Bereich schlagen<br>**Rallye:** Ball schlagen (Richtung wird durch Bewegung mitbestimmt) |
+| **C** / **📷 Cam** | Kamera wechseln (Follow-Cam an/aus – Orbit-Kamera mit Maus/Finger steuerbar) |
+| **R** / **↻ Neu** | Ballwechsel / Aufschlag neu starten (Safety Reset) |
 | **Linksklick + Ziehen** | Kamera um den Court rotieren (wenn Follow-Cam aus oder ergänzend) |
-| **Mausrad** | Zoom |
+| **Mausrad** / **Pinch** | Zoom |
 
 ---
 
@@ -33,6 +33,7 @@ Ein interaktives 3D-Tennisspiel direkt im Browser, entwickelt mit **Three.js** i
 - 🎾 **Automatische Schlagwahl:** Spieler erkennt Ballposition und führt automatisch Vorhand- oder Rückhandschwünge aus.
 - 📊 **Tennis-Zählwerk:** Echte Zählweise (0, 15, 30, 40, Einstand, Vorteil, Spiele, Sätze) mit wechselnder Aufschlagseite.
 - 🎥 **Dual-Kamera-System:** Dynamische Follow-Kamera hinter dem Spieler oder freie Orbit-Kamera zur Platzübersicht.
+- 📱 **Touch-Steuerung:** Virtueller Stick und großer Schlag-Knopf für Handy und Tablet, inklusive Aufschlag-Timing.
 
 ---
 
@@ -62,6 +63,6 @@ Einfach die Datei `index.html` direkt im Browser per Doppelklick oder über eine
 - [ ] Soundeffekte (Schlaggeräusche, Ballaufprall, Netzkontakt, Schiedsrichteransagen)
 - [ ] Sound- und Jubelanimationen für Punkte und Asse
 - [ ] Verschiedene Beläge (Sandplatz / Roland Garros, Rasen / Wimbledon)
-- [ ] Touch-Steuerung für mobile Endgeräte (iOS / Android)
+- [x] Touch-Steuerung für mobile Endgeräte (iOS / Android)
 - [ ] Einstellbare KI-Schwierigkeitsgrade (Leicht, Mittel, Profi)
 - [ ] Lokaler 2-Spieler-Modus (Split-Screen oder Dual-Controls)

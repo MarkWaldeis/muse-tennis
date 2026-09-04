@@ -2,21 +2,133 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="theme-color" content="#2a5dca" />
 <title>Three.js Tennis Court - US Open Style</title>
 <style>
-  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #87a8c8; font-family: system-ui, sans-serif; }
-  #app { width: 100%; height: 100%; }
-  #info {
-    position: absolute; top: 12px; left: 12px; color: white;
-    background: rgba(0,0,0,0.45); padding: 8px 12px; border-radius: 8px;
-    font-size: 13px; pointer-events: none; line-height: 1.4;
+  :root {
+    --hud-bg: rgba(0,0,0,0.55);
+    --safe-t: env(safe-area-inset-top, 0px);
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-l: env(safe-area-inset-left, 0px);
+    --safe-r: env(safe-area-inset-right, 0px);
   }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%; height: 100dvh;
+    overflow: hidden; background: #87a8c8; font-family: system-ui, sans-serif;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+    -webkit-touch-callout: none; overscroll-behavior: none;
+    position: fixed; inset: 0;
+  }
+  #app, #app canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+  #info, #score, #status, #serveUI { color: white; background: var(--hud-bg); pointer-events: none; }
+  #info {
+    position: absolute; top: calc(12px + var(--safe-t)); left: calc(12px + var(--safe-l));
+    padding: 8px 12px; border-radius: 8px; font-size: 13px; line-height: 1.4;
+    max-width: min(420px, calc(100vw - 24px)); z-index: 5;
+  }
+  html.touch-ui #info .desk, html:not(.touch-ui) #info .mob { display: none; }
+  #score {
+    position: absolute; top: calc(12px + var(--safe-t)); left: 50%; transform: translateX(-50%);
+    padding: 8px 14px; border-radius: 8px; font-size: 14px; white-space: nowrap; z-index: 5;
+  }
+  #status {
+    position: absolute; bottom: calc(14px + var(--safe-b)); right: calc(12px + var(--safe-r));
+    padding: 8px 12px; border-radius: 8px; font-size: 13px; z-index: 5;
+  }
+  #camBtn, #resetBtn {
+    position: absolute; border: none; background: var(--hud-bg); color: white;
+    font-size: 13px; cursor: pointer; border-radius: 8px; padding: 8px 12px;
+    z-index: 6; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  }
+  #camBtn { bottom: calc(14px + var(--safe-b)); left: calc(12px + var(--safe-l)); }
+  #resetBtn { display: none; }
+  #serveUI {
+    position: absolute; bottom: 64px; left: 50%; transform: translateX(-50%);
+    width: 260px; display: none; text-align: center; z-index: 5; background: transparent;
+  }
+  #serveLabel { color: white; background: var(--hud-bg); border-radius: 8px; padding: 6px 10px; font-size: 13px; margin-bottom: 6px; }
+  #serveBar { position: relative; height: 16px; background: var(--hud-bg); border-radius: 8px; overflow: hidden; }
+  #serveSweet { position: absolute; left: 82%; width: 18%; top: 0; bottom: 0; background: rgba(80,220,100,0.8); }
+  #serveMark { position: absolute; left: 0%; top: -2px; bottom: -2px; width: 5px; background: #fff; border-radius: 3px; }
   #loading {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
     background: #87a8c8; color: white; font-size: 18px; z-index: 20;
   }
+  #touchPad { display: none; position: absolute; inset: 0; pointer-events: none; z-index: 6; }
+  #joyBase {
+    position: absolute; left: calc(16px + var(--safe-l)); bottom: calc(20px + var(--safe-b));
+    width: 128px; height: 128px; border-radius: 50%;
+    background: rgba(0,0,0,0.32); border: 2px solid rgba(255,255,255,0.38);
+    touch-action: none; pointer-events: auto;
+  }
+  #joyKnob {
+    position: absolute; left: 50%; top: 50%; width: 56px; height: 56px;
+    margin: -28px 0 0 -28px; border-radius: 50%; background: rgba(255,255,255,0.9);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.35); pointer-events: none;
+    will-change: transform;
+  }
+  #hitBtn {
+    position: absolute; right: calc(16px + var(--safe-r)); bottom: calc(28px + var(--safe-b));
+    width: 92px; height: 92px; border-radius: 50%;
+    border: 3px solid rgba(255,255,255,0.55); background: rgba(40,160,70,0.9);
+    color: white; font-size: 30px; line-height: 1; cursor: pointer;
+    touch-action: none; -webkit-tap-highlight-color: transparent;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.35); pointer-events: auto;
+  }
+  #hitBtn.pressed, #hitBtn:active { transform: scale(0.94); background: rgba(28,120,52,0.95); }
+  #hitCaption {
+    position: absolute; right: calc(16px + var(--safe-r)); bottom: calc(8px + var(--safe-b));
+    width: 92px; text-align: center; color: #fff; font-size: 11px; font-weight: 700;
+    letter-spacing: 0.04em; text-shadow: 0 1px 3px rgba(0,0,0,0.75); pointer-events: none;
+  }
+  html.touch-ui #touchPad { display: block; }
+  html.touch-ui #resetBtn { display: block; }
+  html.touch-ui #info {
+    top: calc(44px + var(--safe-t)); font-size: 11px; max-width: min(46vw, 220px); padding: 6px 8px;
+  }
+  html.touch-ui #score {
+    top: calc(8px + var(--safe-t)); font-size: 12px; padding: 6px 10px;
+    white-space: normal; text-align: center; max-width: min(72vw, 340px);
+  }
+  html.touch-ui #status {
+    top: calc(8px + var(--safe-t)); right: calc(8px + var(--safe-r)); bottom: auto;
+    font-size: 11px; max-width: 28vw; padding: 6px 8px;
+  }
+  html.touch-ui #camBtn, html.touch-ui #resetBtn {
+    top: calc(8px + var(--safe-t)); bottom: auto; font-size: 12px; padding: 7px 10px;
+  }
+  html.touch-ui #camBtn { left: calc(8px + var(--safe-l)); }
+  html.touch-ui #resetBtn { left: calc(108px + var(--safe-l)); }
+  html.touch-ui #serveUI {
+    bottom: calc(148px + var(--safe-b)); width: min(260px, calc(100vw - 180px));
+  }
+  @media (max-width: 420px) {
+    #joyBase { width: 108px; height: 108px; }
+    #joyKnob { width: 48px; height: 48px; margin: -24px 0 0 -24px; }
+    #hitBtn { width: 78px; height: 78px; font-size: 26px; }
+    #hitCaption { width: 78px; }
+  }
+  @media (max-height: 500px) {
+    #joyBase { width: 96px; height: 96px; bottom: calc(12px + var(--safe-b)); }
+    #hitBtn { width: 72px; height: 72px; font-size: 24px; bottom: calc(16px + var(--safe-b)); }
+    #hitCaption { display: none; }
+    html.touch-ui #serveUI { bottom: calc(118px + var(--safe-b)); }
+  }
 </style>
+<script>
+(function () {
+  var touch = false;
+  try {
+    touch = matchMedia('(pointer: coarse)').matches
+      || ((navigator.maxTouchPoints || 0) > 0 && matchMedia('(max-width: 1024px)').matches);
+  } catch (e) {}
+  document.documentElement.classList.toggle('touch-ui', touch);
+})();
+</script>
 <script type="importmap">
 {
   "imports": {
@@ -29,16 +141,27 @@
 <body>
 <div id="app"></div>
 <div id="loading">Lade Spieler-Rig…</div>
-<div id="info">🎾 Tennis – Aufschlag & Rally<br>WASD: laufen • Space: Aufschlag/Schlag (Vorhand/Rückhand auto) • R: neu • C: Cam</div>
-<button id="camBtn" style="position:absolute;bottom:14px;left:12px;padding:8px 12px;border-radius:8px;border:none;background:rgba(0,0,0,0.55);color:white;font-size:13px;cursor:pointer;">📷 Follow-Cam: AN</button>
-<div id="status" style="position:absolute;bottom:14px;right:12px;color:white;background:rgba(0,0,0,0.55);padding:8px 12px;border-radius:8px;font-size:13px;pointer-events:none;">Ballwechsel: 0</div>
-<div id="score" style="position:absolute;top:12px;left:50%;transform:translateX(-50%);color:white;background:rgba(0,0,0,0.55);padding:8px 14px;border-radius:8px;font-size:14px;pointer-events:none;white-space:nowrap;">Sätze 0:0 • Spiele 0:0 • Punkte 0:0</div>
-<div id="serveUI" style="position:absolute;bottom:64px;left:50%;transform:translateX(-50%);width:260px;display:none;pointer-events:none;text-align:center;">
-  <div id="serveLabel" style="color:white;background:rgba(0,0,0,0.55);border-radius:8px;padding:6px 10px;font-size:13px;margin-bottom:6px;">SPACE im GRÜNEN Bereich!</div>
-  <div style="position:relative;height:16px;background:rgba(0,0,0,0.55);border-radius:8px;overflow:hidden;">
-    <div style="position:absolute;left:82%;width:18%;top:0;bottom:0;background:rgba(80,220,100,0.8);"></div>
-    <div id="serveMark" style="position:absolute;left:0%;top:-2px;bottom:-2px;width:5px;background:#fff;border-radius:3px;"></div>
+<div id="info">
+  <span class="desk">🎾 Tennis – Aufschlag & Rally<br>WASD: laufen • Space: Aufschlag/Schlag (Vorhand/Rückhand auto) • R: neu • C: Cam</span>
+  <span class="mob">🎾 Stick: laufen • großer Knopf: Aufschlag/Schlag<br>↻ neu • 📷 Kamera</span>
+</div>
+<button id="camBtn" type="button">📷 Follow-Cam: AN</button>
+<button id="resetBtn" type="button">↻ Neu</button>
+<div id="status">Ballwechsel: 0</div>
+<div id="score">Sätze 0:0 • Spiele 0:0 • Punkte 0:0</div>
+<div id="serveUI">
+  <div id="serveLabel">Im GRÜNEN Bereich schlagen!</div>
+  <div id="serveBar">
+    <div id="serveSweet"></div>
+    <div id="serveMark"></div>
   </div>
+</div>
+<div id="touchPad">
+  <div id="joyBase" role="presentation" aria-label="Bewegung">
+    <div id="joyKnob"></div>
+  </div>
+  <button id="hitBtn" type="button" aria-label="Schlag">🎾</button>
+  <div id="hitCaption">SCHLAG</div>
 </div>
 
 <script type="module">
@@ -81,10 +204,27 @@ export const COURT_DIMENSIONS = {
 
 // ---------- Renderer / Scene / Camera ----------
 const PROBE = new URLSearchParams(location.search).has('probe');
+function isTouchPlay() {
+  try {
+    return window.matchMedia('(pointer: coarse)').matches
+      || ((navigator.maxTouchPoints || 0) > 0 && window.matchMedia('(max-width: 1024px)').matches);
+  } catch {
+    return ('ontouchstart' in window);
+  }
+}
+function applyTouchClass() {
+  const touch = isTouchPlay();
+  document.documentElement.classList.toggle('touch-ui', touch);
+  document.body.classList.toggle('touch-ui', touch);
+}
+function hitHint() {
+  return document.documentElement.classList.contains('touch-ui') ? 'SCHLAG' : 'SPACE';
+}
+applyTouchClass();
 const container = document.getElementById('app');
 const renderer = new THREE.WebGLRenderer({ antialias: !PROBE, powerPreference: PROBE ? 'low-power' : 'default' });
 renderer.setSize(PROBE ? 640 : window.innerWidth, PROBE ? 360 : window.innerHeight);
-renderer.setPixelRatio(PROBE ? 0.5 : Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(PROBE ? 0.5 : Math.min(window.devicePixelRatio, isTouchPlay() ? 1.5 : 2));
 renderer.shadowMap.enabled = !PROBE;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -106,6 +246,7 @@ controls.dampingFactor = 0.06;
 controls.maxPolarAngle = Math.PI / 2 - 0.02;
 controls.minDistance = 5;
 controls.maxDistance = 80;
+controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 controls.update();
 
 // ---------- Lights ----------
@@ -116,7 +257,7 @@ function createLights(s) {
   const sun = new THREE.DirectionalLight(0xffffff, 1.7);
   sun.position.set(20, 30, 10);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(isTouchPlay() ? 1024 : 2048, isTouchPlay() ? 1024 : 2048);
   sun.shadow.camera.left = -25;
   sun.shadow.camera.right = 25;
   sun.shadow.camera.top = 25;
@@ -447,23 +588,96 @@ function curlFingers(bones, tag, amount) {
 // Phases: PREP (unit turn) -> LOOP (take-back) -> SWING (explosive) -> FOLLOW (recover)
 export const STROKE_TIMING = { prep: 0.12, loop: 0.10, swing: 0.10, follow: 0.15 };
 
-// Keyboard input (WASD + arrows + Space + C)
+// Keyboard + touch input (WASD / arrows / Space / on-screen stick + hit)
 export const input = { x: 0, z: 0, swingPressed: false };
 const keys = {};
+const touchMove = { x: 0, z: 0 };
 window.addEventListener('keydown', (e) => {
   if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
   keys[e.key.toLowerCase()] = true;
   if (e.key === ' ' && !e.repeat) input.swingPressed = true;
 });
 window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+window.addEventListener('contextmenu', (e) => {
+  if (e.target && (e.target.closest('#touchPad') || e.target.closest('#camBtn') || e.target.closest('#resetBtn') || e.target === renderer.domElement)) {
+    e.preventDefault();
+  }
+});
+window.addEventListener('gesturestart', (e) => e.preventDefault());
+
+const joyBase = document.getElementById('joyBase');
+const joyKnob = document.getElementById('joyKnob');
+const hitBtn = document.getElementById('hitBtn');
+const hitCaption = document.getElementById('hitCaption');
+const joyState = { id: null };
+
+function setJoy(nx, nz) {
+  touchMove.x = nx;
+  touchMove.z = nz;
+  if (!joyKnob || !joyBase) return;
+  const max = Math.max(8, joyBase.clientWidth * 0.32);
+  joyKnob.style.transform = `translate(${nx * max}px, ${nz * max}px)`;
+}
+
+function joyFromEvent(e) {
+  if (!joyBase) return;
+  const r = joyBase.getBoundingClientRect();
+  const dx = e.clientX - (r.left + r.width / 2);
+  const dy = e.clientY - (r.top + r.height / 2);
+  const max = r.width * 0.42;
+  const len = Math.hypot(dx, dy);
+  const mag = Math.min(1, len / Math.max(1, max));
+  const dead = 0.14;
+  const scale = mag < dead ? 0 : (mag - dead) / (1 - dead);
+  const nx = len > 0 ? (dx / len) * scale : 0;
+  const nz = len > 0 ? (dy / len) * scale : 0;
+  setJoy(nx, nz);
+}
+
+if (joyBase) {
+  joyBase.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    joyBase.setPointerCapture(e.pointerId);
+    joyState.id = e.pointerId;
+    joyFromEvent(e);
+  });
+  joyBase.addEventListener('pointermove', (e) => {
+    if (joyState.id !== e.pointerId) return;
+    e.preventDefault();
+    joyFromEvent(e);
+  });
+  const joyEnd = (e) => {
+    if (joyState.id !== e.pointerId) return;
+    joyState.id = null;
+    setJoy(0, 0);
+  };
+  joyBase.addEventListener('pointerup', joyEnd);
+  joyBase.addEventListener('pointercancel', joyEnd);
+}
+
+if (hitBtn) {
+  hitBtn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    input.swingPressed = true;
+    hitBtn.classList.add('pressed');
+  });
+  const hitEnd = () => hitBtn.classList.remove('pressed');
+  hitBtn.addEventListener('pointerup', hitEnd);
+  hitBtn.addEventListener('pointercancel', hitEnd);
+  hitBtn.addEventListener('pointerleave', (e) => {
+    if (e.buttons === 0) hitEnd();
+  });
+}
 
 function pollInput() {
   const left = keys['a'] || keys['arrowleft'] ? 1 : 0;
   const right = keys['d'] || keys['arrowright'] ? 1 : 0;
   const up = keys['w'] || keys['arrowup'] ? 1 : 0;       // to net (-z)
   const down = keys['s'] || keys['arrowdown'] ? 1 : 0;   // away (+z)
-  input.x = right - left;
-  input.z = down - up; // -1 = forward to net, +1 = back
+  input.x = (right - left) + touchMove.x;
+  input.z = (down - up) + touchMove.z; // -1 = forward to net, +1 = back
   const len = Math.hypot(input.x, input.z);
   if (len > 1) { input.x /= len; input.z /= len; }
 }
@@ -1406,7 +1620,7 @@ export function createServeController(pl, bl, s) {
       } else if (SERVE.side === 'ad' && input.x > 0.1 && pp.x >= -SERVE_SIDE_MIN - 0.02) {
         msg = 'Vorteil: linke Hälfte! (Aufschlag ist diagonal)';
       }
-      if (msg) { wallShake = 0.2; setStatus(msg + ' – SPACE = hochwerfen'); }
+      if (msg) { wallShake = 0.2; setStatus(msg + ' – ' + hitHint() + ' = hochwerfen'); }
     }
   }
 
@@ -1440,7 +1654,7 @@ export function createServeController(pl, bl, s) {
     input.swingPressed = false; // clear stale presses
     showUI(false);
     if (typeof onEnterReady === 'function') onEnterReady();
-    setStatus(msg || `Aufschlag (${sideName()}) – laufen ok, SPACE = hochwerfen`);
+    setStatus(msg || `Aufschlag (${sideName()}) – laufen ok, ${hitHint()} = hochwerfen`);
   }
 
   // External hook set by setup: positions AI + resets rally counter display
@@ -1455,7 +1669,7 @@ export function createServeController(pl, bl, s) {
     apexT = SERVE_TOSS_V0 / -BALL.gravity; // ~0.39s
     mode = 'toss';
     tPhase = 0;
-    showUI(true, SERVE.firstServe ? 'SPACE im GRÜNEN Bereich schlagen!' : '2. Aufschlag – ruhiger, sicher treffen!');
+    showUI(true, SERVE.firstServe ? `${hitHint()} im GRÜNEN Bereich schlagen!` : '2. Aufschlag – ruhiger, sicher treffen!');
   }
 
   function serveTarget(q) {
@@ -1538,7 +1752,7 @@ export function createServeController(pl, bl, s) {
     input.swingPressed = false;
     showUI(false);
     if (typeof onEnterReady === 'function') onEnterReady();
-    setStatus(msg + ' – SPACE = hochwerfen');
+    setStatus(msg + ' – ' + hitHint() + ' = hochwerfen');
   }
 
   function inBox(b) {
@@ -1811,7 +2025,7 @@ function awardPoint(winner, reason) {
   updateScoreboard();
   rallyHits = 0; deadTimer = 0;
   SERVE.points++; // serve side alternates every point played
-  serve.enterReady(msg + ' – neuer Aufschlag, SPACE = hochwerfen');
+  serve.enterReady(msg + ' – neuer Aufschlag, ' + hitHint() + ' = hochwerfen');
 }
 
 serve.setHooks({
@@ -1856,7 +2070,7 @@ function resetRally(msg, winner) {
   if (winner) { awardPoint(winner, msg); return; }
   rallyHits = 0;
   deadTimer = 0;
-  serve.enterReady((msg ? msg + ' – ' : '') + 'neuer Aufschlag, SPACE = hochwerfen');
+  serve.enterReady((msg ? msg + ' – ' : '') + 'neuer Aufschlag, ' + hitHint() + ' = hochwerfen');
 }
 
 function safetyReset() {
@@ -1869,37 +2083,63 @@ function safetyReset() {
 window.addEventListener('keydown', (e) => {
   if (e.key.toLowerCase() === 'r') safetyReset();
 });
+const resetBtn = document.getElementById('resetBtn');
+if (resetBtn) resetBtn.addEventListener('click', (e) => { e.preventDefault(); safetyReset(); });
 
-serve.enterReady('1. Aufschlag – hinter die Grundlinie, SPACE = hochwerfen');
+serve.enterReady('1. Aufschlag – hinter die Grundlinie, ' + hitHint() + ' = hochwerfen');
 updateScoreboard();
 
-// Follow-Cam (toggle with C / Button), Orbit bleibt aktiv
+// Follow-Cam (toggle with C / Button). On touch, orbit stays off while following
+// so thumbs on the canvas don't yank the camera mid-point.
 let followCam = true;
 const camBtn = document.getElementById('camBtn');
+function syncOrbit() {
+  const touch = document.documentElement.classList.contains('touch-ui');
+  const allowOrbit = !touch || !followCam;
+  controls.enableRotate = allowOrbit;
+  controls.enablePan = allowOrbit;
+  controls.enableZoom = allowOrbit;
+}
 function setFollow(v) {
   followCam = v;
   if (camBtn) camBtn.textContent = followCam ? '📷 Follow-Cam: AN' : '📷 Follow-Cam: AUS';
+  syncOrbit();
 }
 if (camBtn) camBtn.addEventListener('click', () => setFollow(!followCam));
 window.addEventListener('keydown', (e) => {
   if (e.key.toLowerCase() === 'c') setFollow(!followCam);
 });
+syncOrbit();
 const followOffset = new THREE.Vector3(0, 6.8, 10.0);
 const followLook = new THREE.Vector3(0, 1.0, -3.0); // preallocated (no per-frame alloc)
 const desiredCam = new THREE.Vector3();
 const desiredTarget = new THREE.Vector3();
 
 // ---------- Resize + Loop ----------
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
+function resizeView() {
+  applyTouchClass();
+  syncOrbit();
+  const w = window.innerWidth;
+  const h = Math.max(1, window.innerHeight);
+  camera.aspect = w / h;
   camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
+  renderer.setSize(w, h);
+}
+window.addEventListener('resize', resizeView);
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', resizeView);
+  window.visualViewport.addEventListener('scroll', resizeView);
+}
+resizeView();
 
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05); // 60fps-unabhängig, clamp bei Tab-Wechsel
   pollInput();
+  if (hitCaption) {
+    const mode = serve.getMode();
+    hitCaption.textContent = mode === 'ready' ? 'WERFEN' : mode === 'toss' ? 'TREFFEN' : 'SCHLAG';
+  }
   // Both fighters track the ball side for forehand/backhand auto-select
   player.noteBall(ball.mesh.position.x - player.group.position.x);
   opponent.noteBall(ball.mesh.position.x - opponent.group.position.x);
