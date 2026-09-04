@@ -400,7 +400,11 @@ function collectBones(root) {
   return map;
 }
 function boneByName(bones, name) {
-  return bones.get(name) || bones.get(name.replace('mixamorig:', '')) || null;
+  // GLTFLoader sanitizes ':' in node names (PropertyBinding), so mixamorig:Hips → mixamorigHips.
+  return bones.get(name)
+    || bones.get(name.replaceAll(':', ''))
+    || bones.get(name.replace('mixamorig:', ''))
+    || null;
 }
 
 // T-pose wings sit along ±X. Tennis poses use:
