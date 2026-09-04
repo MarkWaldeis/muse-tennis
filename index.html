@@ -25,6 +25,25 @@
   }
   #app, #app canvas { width: 100%; height: 100%; display: block; touch-action: none; }
   #info, #score, #status, #serveUI { color: white; background: var(--hud-bg); pointer-events: none; }
+  #callout {
+    position: absolute; left: 50%; top: 36%; transform: translate(-50%, -50%) scale(0.86);
+    font-size: clamp(28px, 6vw, 56px); font-weight: 800; letter-spacing: 0.12em;
+    color: #fff; text-shadow: 0 3px 18px rgba(0,0,0,0.55), 0 0 24px rgba(255,255,255,0.25);
+    pointer-events: none; opacity: 0; z-index: 8; white-space: nowrap;
+    text-transform: uppercase;
+  }
+  #callout.pop { animation: calloutPop 1.15s ease-out forwards; }
+  #callout[data-kind="in"] { color: #8dff7a; }
+  #callout[data-kind="out"] { color: #ff6b6b; }
+  #callout[data-kind="let"] { color: #fff4a3; }
+  #callout[data-kind="point"] { color: #ffe566; }
+  #callout[data-kind="game"] { color: #7ad7ff; }
+  @keyframes calloutPop {
+    0% { opacity: 0; transform: translate(-50%, -50%) scale(0.72); }
+    14% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
+    62% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    100% { opacity: 0; transform: translate(-50%, -50%) scale(1.02); }
+  }
   #info {
     position: absolute; top: calc(12px + var(--safe-t)); left: calc(12px + var(--safe-l));
     padding: 8px 12px; border-radius: 8px; font-size: 13px; line-height: 1.4;
@@ -107,6 +126,7 @@
   html.touch-ui #serveUI {
     bottom: calc(148px + var(--safe-b)); width: min(260px, calc(100vw - 180px));
   }
+  html.touch-ui #callout { top: 28%; font-size: clamp(22px, 8vw, 40px); }
   @media (max-width: 420px) {
     #joyBase { width: 108px; height: 108px; }
     #joyKnob { width: 48px; height: 48px; margin: -24px 0 0 -24px; }
@@ -150,6 +170,7 @@
 <button id="resetBtn" type="button">↻ Neu</button>
 <div id="status">Ballwechsel: 0</div>
 <div id="score">Sätze 0:0 • Spiele 0:0 • Punkte 0:0</div>
+<div id="callout" aria-hidden="true"></div>
 <div id="serveUI">
   <div id="serveLabel">Im GRÜNEN Bereich schlagen!</div>
   <div id="serveBar">
@@ -1451,8 +1472,8 @@ export function createPlayer(s, opts = {}) {
 export const BALL = {
   radius: 0.13, // real 0.033, scaled x4 for visibility
   gravity: -18.0,
-  bounceDamping: 0.72,
-  friction: 0.985
+  bounceDamping: 0.50,
+  friction: 0.94
 };
 
 function makeBallTexture() {
@@ -1516,7 +1537,7 @@ export function createBall(s) {
   }
 
   // Ballistic shot: choose velocity so ball lands at `to` after flightTime
-  function hit(from, to, flightTime = 0.95) {
+  function hit(from, to, flightTime = 1.15) {
     const t = Math.max(0.3, flightTime);
     group.position.copy(from);
     velocity.set(
@@ -1550,7 +1571,7 @@ export function createBall(s) {
     let bounceEvent = null;
     if (group.position.y <= BALL.radius && velocity.y < 0) {
       group.position.y = BALL.radius;
-      if (Math.abs(velocity.y) < 1.4) velocity.y = 0; // roll-out, no endless micro-bounce
+      if (Math.abs(velocity.y) < 1.1) velocity.y = 0; // roll-out, no endless micro-bounce
       else velocity.y *= -BALL.bounceDamping;
       velocity.x *= BALL.friction;
       velocity.z *= BALL.friction;
@@ -1582,8 +1603,26 @@ export function createBall(s) {
     return bounceEvent;
   }
 
+  const predictP = new THREE.Vector3();
+  const predictV = new THREE.Vector3();
+  function predictLanding(out) {
+    const dest = out || predictP;
+    dest.copy(group.position);
+    predictV.copy(velocity);
+    const step = 1 / 60;
+    for (let t = 0; t < 3; t += step) {
+      predictV.y += BALL.gravity * step;
+      dest.addScaledVector(predictV, step);
+      if (dest.y <= BALL.radius) {
+        dest.y = BALL.radius;
+        break;
+      }
+    }
+    return dest;
+  }
+
   return {
-    mesh: group, velocity, update, hit, reset,
+    mesh: group, velocity, update, hit, reset, predictLanding,
     get bounces() { return bouncesSinceHit; },
     get hitter() { return lastHitter; },
     set hitter(v) { lastHitter = v; },
@@ -1610,19 +1649,6 @@ export function createOpponentAI(opp, ball) {
   const aiInput = { x: 0, z: 0 };
   let cooldown = 0;
 
-  // Simulate gravity-only flight to predict landing spot
-  function predictLanding() {
-    const p = ball.mesh.position.clone();
-    const v = ball.velocity.clone();
-    const dt = 1 / 60;
-    for (let t = 0; t < 3; t += dt) {
-      v.y += BALL.gravity * dt;
-      p.addScaledVector(v, dt);
-      if (p.y <= BALL.radius) break;
-    }
-    return p;
-  }
-
   function pickTarget() {
     // Corners on player side, small error can cause outs (fun + TODO scoring)
     const cornerX = (Math.random() < 0.5 ? -1 : 1) * (2.2 + Math.random() * 2.4);
@@ -1642,7 +1668,7 @@ export function createOpponentAI(opp, ball) {
     let tx = AI.home.x, tz = AI.home.z;
     const incoming = ball.velocity.z < -0.5 && bp.z > -2;
     if (bp.z < 1.0 || incoming) {
-      const land = predictLanding();
+      const land = ball.predictLanding();
       if (land.z < 1.0) { tx = land.x; tz = land.z - 0.7; }
     }
     tx = THREE.MathUtils.clamp(tx, -9, 9);
@@ -1659,7 +1685,7 @@ export function createOpponentAI(opp, ball) {
       opp.noteBall(bp.x - op.x); // refresh side AFTER the run-up: correct forehand/backhand pick
       opp.swing();
       ball.hitter = 'ai';
-      ball.hit(bp.clone(), pickTarget(), 0.9 + Math.random() * 0.25);
+      ball.hit(bp.clone(), pickTarget(), 1.05 + Math.random() * 0.20);
       cooldown = AI.hitCooldown;
       return true;
     }
@@ -1712,7 +1738,354 @@ function makeFlashTexture() {
   return new THREE.CanvasTexture(c);
 }
 
-export function createServeController(pl, bl, s) {
+function makeRingTexture(dashed) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, 128, 128);
+  ctx.strokeStyle = '#ffffff';
+  if (dashed) ctx.setLineDash([9, 11]);
+  ctx.lineWidth = dashed ? 7 : 11;
+  ctx.beginPath();
+  ctx.arc(64, 64, dashed ? 46 : 50, 0, Math.PI * 2);
+  ctx.stroke();
+  if (!dashed) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(64, 64, 36, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+const FX_COLORS = {
+  in: 0x7dff7a,
+  out: 0xff4d4d,
+  serve: 0x5ceaff,
+  default: 0xfff4a8
+};
+
+function noopFx() {
+  return {
+    update() {}, spawnBounce() {}, setGhost() {},
+    showServeBox() {}, hideServeBox() {}, pulseServeBox() {},
+    sparkAt() {}, callout() {}, sound() {}, kick() {}
+  };
+}
+
+function createSfx() {
+  let ctx = null;
+  function ac() {
+    if (!ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      ctx = new AC();
+    }
+    if (ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+  function tone(freq, dur, type, gain, slide) {
+    const a = ac();
+    if (!a) return;
+    const o = a.createOscillator();
+    const g = a.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, a.currentTime);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, slide), a.currentTime + dur);
+    g.gain.setValueAtTime(gain, a.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0008, a.currentTime + dur);
+    o.connect(g); g.connect(a.destination);
+    o.start();
+    o.stop(a.currentTime + dur + 0.02);
+  }
+  function noise(dur, gain) {
+    const a = ac();
+    if (!a) return;
+    const n = Math.max(1, Math.floor(a.sampleRate * dur));
+    const buf = a.createBuffer(1, n, a.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const src = a.createBufferSource();
+    const g = a.createGain();
+    src.buffer = buf;
+    g.gain.setValueAtTime(gain, a.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0008, a.currentTime + dur);
+    src.connect(g); g.connect(a.destination);
+    src.start();
+  }
+  const play = {
+    toss() { tone(520, 0.09, 'sine', 0.06, 780); },
+    hit() { noise(0.05, 0.12); tone(210, 0.07, 'square', 0.05, 90); },
+    bounce() { tone(190, 0.06, 'triangle', 0.07, 110); },
+    out() { tone(180, 0.22, 'sawtooth', 0.07, 70); },
+    point() { tone(523, 0.12, 'sine', 0.08); setTimeout(() => tone(659, 0.16, 'sine', 0.07), 90); }
+  };
+  function sound(name) {
+    const fn = play[name];
+    if (fn) fn();
+  }
+  window.addEventListener('pointerdown', ac);
+  window.addEventListener('keydown', ac);
+  return { sound, unlock: ac };
+}
+
+function createGameFeel(s) {
+  const sfx = createSfx();
+  const ringTex = makeRingTexture(false);
+  const ghostTex = makeRingTexture(true);
+  const flashTex = makeFlashTexture();
+  const bouncePool = [];
+  const BOUNCE_N = 4;
+  const BOUNCE_DUR = 0.72;
+  for (let i = 0; i < BOUNCE_N; i++) {
+    const group = new THREE.Group();
+    group.visible = false;
+    const ring = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.35, 1.35),
+      new THREE.MeshBasicMaterial({
+        map: ringTex, color: 0xffffff, transparent: true, opacity: 0,
+        depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3
+      })
+    );
+    ring.rotation.x = -Math.PI / 2;
+    const disc = new THREE.Mesh(
+      new THREE.CircleGeometry(0.28, 20),
+      new THREE.MeshBasicMaterial({
+        color: 0xffffff, transparent: true, opacity: 0, depthWrite: false,
+        polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3
+      })
+    );
+    disc.rotation.x = -Math.PI / 2;
+    disc.position.y = 0.002;
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: flashTex, color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, depthTest: true
+    }));
+    glow.position.y = 0.08;
+    glow.scale.set(0.6, 0.6, 1);
+    group.add(disc);
+    group.add(ring);
+    group.add(glow);
+    group.position.y = 0.03;
+    s.add(group);
+    bouncePool.push({ group, ring, disc, glow, t: 1, live: false });
+  }
+  let bounceI = 0;
+
+  const ghost = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.15, 1.15),
+    new THREE.MeshBasicMaterial({
+      map: ghostTex, color: 0xeaff70, transparent: true, opacity: 0.55,
+      depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4
+    })
+  );
+  ghost.rotation.x = -Math.PI / 2;
+  ghost.position.y = 0.032;
+  ghost.visible = false;
+  s.add(ghost);
+  let ghostPulse = 0;
+
+  const boxW = SERVE_BOX.xMax;
+  const boxD = SERVE_BOX.zServe;
+  const boxMat = new THREE.MeshBasicMaterial({
+    color: 0x7af7ff, transparent: true, opacity: 0,
+    depthWrite: false,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
+  });
+  const box = new THREE.Mesh(new THREE.PlaneGeometry(boxW, boxD), boxMat);
+  box.name = 'serveTargetBox';
+  box.rotation.x = -Math.PI / 2;
+  box.position.set(-boxW / 2, 0.018, -boxD / 2);
+  box.visible = false;
+  box.renderOrder = 2;
+  const edgeMat = new THREE.MeshBasicMaterial({
+    color: 0xffe566, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide
+  });
+  boxMat.side = THREE.DoubleSide;
+  const ew = 0.22;
+  function addBoxEdge(w, h, x, y) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), edgeMat);
+    m.position.set(x, y, 0.004);
+    m.renderOrder = 3;
+    box.add(m);
+  }
+  addBoxEdge(boxW, ew, 0, boxD / 2 - ew / 2);
+  addBoxEdge(boxW, ew, 0, -boxD / 2 + ew / 2);
+  addBoxEdge(ew, boxD, -boxW / 2 + ew / 2, 0);
+  addBoxEdge(ew, boxD, boxW / 2 - ew / 2, 0);
+  s.add(box);
+  let boxMode = 'hidden'; // hidden | idle | hit | let | fault
+  let boxT = 0;
+  let boxIdle = 0;
+
+  function tintBox(fill, edge) {
+    boxMat.color.setHex(fill);
+    edgeMat.color.setHex(edge);
+  }
+
+  const spark = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: flashTex, transparent: true, opacity: 0, depthTest: false
+  }));
+  spark.scale.set(0.3, 0.3, 1);
+  s.add(spark);
+  let sparkT = 1;
+
+  const calloutEl = document.getElementById('callout');
+  let calloutGen = 0;
+
+  function spawnBounce(x, z, kind) {
+    const m = bouncePool[bounceI % BOUNCE_N];
+    bounceI++;
+    m.group.position.set(x, 0.03, z);
+    m.t = 0;
+    m.live = true;
+    m.group.visible = true;
+    const col = FX_COLORS[kind] || FX_COLORS.default;
+    m.ring.material.color.setHex(col);
+    m.disc.material.color.setHex(col);
+    m.glow.material.color.setHex(col);
+  }
+
+  function setGhost(x, z, visible) {
+    if (!visible) {
+      ghost.visible = false;
+      return;
+    }
+    ghost.visible = true;
+    ghost.position.x = x;
+    ghost.position.z = z;
+  }
+
+  function placeServeBox(side) {
+    box.position.set(side === 'deuce' ? -boxW / 2 : boxW / 2, 0.018, -boxD / 2);
+  }
+
+  function showServeBox(side) {
+    placeServeBox(side);
+    boxMode = 'idle';
+    boxT = 0;
+    box.visible = true;
+    box.scale.set(1, 1, 1);
+    tintBox(0x7af7ff, 0xffe566);
+  }
+
+  function hideServeBox() {
+    boxMode = 'hidden';
+    box.visible = false;
+    boxMat.opacity = 0;
+    edgeMat.opacity = 0;
+  }
+
+  function pulseServeBox(kind) {
+    if (kind === 'in') { boxMode = 'hit'; boxT = 0; box.visible = true; tintBox(0xe8ffff, 0xffffff); }
+    else if (kind === 'let') { boxMode = 'let'; boxT = 0; box.visible = true; tintBox(0xffffff, 0xfff4a3); }
+    else if (kind === 'fault') { boxMode = 'fault'; boxT = 0; box.visible = true; tintBox(0xff6b6b, 0xffffff); }
+  }
+
+  function sparkAt(pos) {
+    spark.position.copy(pos);
+    sparkT = 0;
+  }
+
+  function callout(text, kind) {
+    if (!calloutEl) return;
+    calloutGen++;
+    const gen = calloutGen;
+    calloutEl.textContent = text;
+    calloutEl.dataset.kind = kind || 'point';
+    calloutEl.classList.remove('pop');
+    void calloutEl.offsetWidth;
+    calloutEl.classList.add('pop');
+    setTimeout(() => {
+      if (gen === calloutGen) calloutEl.classList.remove('pop');
+    }, 1200);
+  }
+
+  function update(dt) {
+    for (const m of bouncePool) {
+      if (!m.live) continue;
+      m.t += dt;
+      const u = Math.min(1, m.t / BOUNCE_DUR);
+      const ease = 1 - (1 - u) * (1 - u);
+      const sc = 0.35 + ease * 2.05;
+      m.ring.scale.set(sc, sc, 1);
+      m.ring.material.opacity = 0.95 * (1 - u);
+      const pop = Math.sin(u * Math.PI);
+      m.disc.scale.set(1.15 - u * 0.4, 1.15 - u * 0.4, 1);
+      m.disc.material.opacity = 0.9 * Math.max(0, 1 - u * 1.35);
+      m.glow.material.opacity = 0.8 * pop;
+      const gs = 0.45 + pop * 1.35;
+      m.glow.scale.set(gs, gs, 1);
+      if (u >= 1) {
+        m.live = false;
+        m.group.visible = false;
+      }
+    }
+
+    if (ghost.visible) {
+      ghostPulse += dt;
+      const g = 0.92 + Math.sin(ghostPulse * 6.5) * 0.12;
+      ghost.scale.set(g, g, 1);
+      ghost.material.opacity = 0.42 + Math.sin(ghostPulse * 6.5) * 0.12;
+    }
+
+    if (boxMode === 'idle') {
+      boxIdle += dt;
+      boxMat.opacity = 0.50 + Math.sin(boxIdle * 3.2) * 0.10;
+      edgeMat.opacity = 1;
+      box.scale.set(1, 1, 1);
+    } else if (boxMode === 'hit') {
+      boxT += dt;
+      const u = Math.min(1, boxT / 0.55);
+      const pop = u < 0.22 ? u / 0.22 : 1;
+      box.scale.set(1 + pop * 0.06, 1 + pop * 0.06, 1);
+      boxMat.opacity = 0.92 * (1 - u);
+      edgeMat.opacity = 1 - u;
+      if (u >= 1) hideServeBox();
+    } else if (boxMode === 'let') {
+      boxT += dt;
+      boxMat.opacity = 0.62 + Math.sin(boxT * 28) * 0.18;
+      edgeMat.opacity = 1;
+      if (boxT >= 0.32) { boxMode = 'idle'; tintBox(0x7af7ff, 0xffe566); }
+    } else if (boxMode === 'fault') {
+      boxT += dt;
+      const fade = 1 - Math.min(1, boxT / 0.32);
+      boxMat.opacity = 0.62 * fade;
+      edgeMat.opacity = fade;
+      if (boxT >= 0.32) { boxMode = 'idle'; tintBox(0x7af7ff, 0xffe566); }
+    }
+
+    if (sparkT < 1) {
+      sparkT = Math.min(1, sparkT + dt / 0.16);
+      spark.material.opacity = 1 - sparkT;
+      const sc = 0.3 + sparkT * 0.9;
+      spark.scale.set(sc, sc, 1);
+    } else if (spark.material.opacity !== 0) {
+      spark.material.opacity = 0;
+    }
+  }
+
+  let camKick = 0;
+  function kick() { camKick = 0.12; }
+  function applyKick(target, dt) {
+    if (camKick <= 0) return;
+    camKick = Math.max(0, camKick - dt);
+    const k = camKick / 0.12;
+    target.x += Math.sin(camKick * 90) * 0.08 * k;
+    target.y += 0.045 * k;
+  }
+
+  return {
+    update, spawnBounce, setGhost,
+    showServeBox, hideServeBox, pulseServeBox,
+    sparkAt, callout, sound: sfx.sound, kick, applyKick
+  };
+}
+
+export function createServeController(pl, bl, s, fx) {
+  fx = fx || noopFx();
   const J = pl.joints;
   const tmpV = new THREE.Vector3();
   const contact = new THREE.Vector3();
@@ -1805,6 +2178,7 @@ export function createServeController(pl, bl, s) {
     startBlend(); // ease from rally pose into serve crouch (no pop)
     input.swingPressed = false; // clear stale presses
     showUI(false);
+    fx.showServeBox(SERVE.side);
     if (typeof onEnterReady === 'function') onEnterReady();
     setStatus(msg || `Aufschlag (${sideName()}) – laufen ok, ${hitHint()} = hochwerfen`);
   }
@@ -1822,6 +2196,7 @@ export function createServeController(pl, bl, s) {
     mode = 'toss';
     tPhase = 0;
     showUI(true, SERVE.firstServe ? `${hitHint()} im GRÜNEN Bereich schlagen!` : '2. Aufschlag – ruhiger, sicher treffen!');
+    fx.sound('toss');
   }
 
   function serveTarget(q) {
@@ -1833,20 +2208,20 @@ export function createServeController(pl, bl, s) {
       const qq = Math.max(q, 0.5);
       tx = sign * (1.2 + Math.random() * 1.6);
       tz = -(2.4 + Math.random() * 2.6);
-      flight = 1.0;
+      flight = 1.15;
     } else if (q >= 0.7) {
       tx = sign * (2.6 + Math.random() * 1.1); // corner attack
       tz = -(4.2 + Math.random() * 1.6);
-      flight = q > 0.9 ? 0.75 : 0.8;
+      flight = q > 0.9 ? 0.90 : 0.95;
     } else if (q >= 0.35) {
       tx = sign * (1.2 + Math.random() * 1.8); // safe
       tz = -(2.5 + Math.random() * 2.5);
-      flight = 0.9;
+      flight = 1.05;
     } else {
       // Shanked timing -> long or wide (fault)
       if (Math.random() < 0.5) { tx = sign * (1.5 + Math.random() * 2); tz = -(SERVE_BOX.zServe + 0.4 + Math.random() * 1.6); }
       else { tx = sign * (SERVE_BOX.xMax + 0.4 + Math.random() * 1.2); tz = -(2 + Math.random() * 3); }
-      flight = 0.85;
+      flight = 1.0;
     }
     return { target: new THREE.Vector3(tx, BALL.radius, tz), flight };
   }
@@ -1867,7 +2242,8 @@ export function createServeController(pl, bl, s) {
     const { target, flight } = serveTarget(q);
     bl.hitter = 'player';
     bl.hit(contact.clone(), target, flight);
-    /* TODO (sound): play serve-hit pop here */
+    fx.sound('hit');
+    fx.kick();
     watch = { sign: SERVE.side === 'deuce' ? -1 : 1, firstServe: SERVE.firstServe, judged: false };
     freezeT = SERVE_TIMING.freeze; // 80ms impact frame
     flashT = 0;
@@ -1903,6 +2279,7 @@ export function createServeController(pl, bl, s) {
     startBlend();
     input.swingPressed = false;
     showUI(false);
+    fx.showServeBox(SERVE.side);
     if (typeof onEnterReady === 'function') onEnterReady();
     setStatus(msg + ' – ' + hitHint() + ' = hochwerfen');
   }
@@ -1917,7 +2294,9 @@ export function createServeController(pl, bl, s) {
   }
 
   // Called from main loop for every bounce; returns true if serve judged it
+  let lastCall = null; // 'in' | 'let' | 'fault' | null
   function consumeBounce(b) {
+    lastCall = null;
     if (!watch || watch.judged) return false;
     watch.judged = true;
     const wasNet = bl.netTouched;
@@ -1925,18 +2304,24 @@ export function createServeController(pl, bl, s) {
     if (wasNet && inBox(b)) {
       // Let: net touch + in -> replay same serve, no fault added
       const wasFirst = watch.firstServe; // save before enterReadyKeepSide clears watch
+      lastCall = 'let';
       enterReadyKeepSide('Let – Netz, aber drin! Wiederholung');
       SERVE.firstServe = wasFirst;
+      fx.pulseServeBox('let');
       return true;
     }
     if (inBox(b)) {
       // Good serve -> rally resumes
       watch = null;
+      lastCall = 'in';
       celebrateT = 0.5; // happy hops
+      fx.pulseServeBox('in');
       if (typeof onGoodServe === 'function') onGoodServe();
       return true; // rally continues, not a reset
     }
+    lastCall = 'fault';
     doFault(`Aufschlag im Aus (${b.x.toFixed(1)}, ${b.z.toFixed(1)})`);
+    if (!SERVE.firstServe) fx.pulseServeBox('fault');
     return true;
   }
 
@@ -2104,12 +2489,13 @@ export function createServeController(pl, bl, s) {
     update, enterReady, consumeBounce,
     // Disarm the serve watch when the ball is hit again before its 1st bounce
     // (volley): the serve is over, live rally takes over. Called on every rally hit.
-    onRallyHit() { if (watch && !watch.judged) watch = null; },
+    onRallyHit() { if (watch && !watch.judged) watch = null; fx.hideServeBox(); },
     setHooks(hooks) { onEnterReady = hooks.onEnterReady || null; onGoodServe = hooks.onGoodServe || null; },
     isActive() { return mode !== 'off'; },
     holdsBall() { return mode === 'ready' || mode === 'toss'; },
     frozen() { return freezeT > 0; },
-    getMode() { return mode; }
+    getMode() { return mode; },
+    get lastCall() { return lastCall; }
   };
 }
 
@@ -2132,8 +2518,9 @@ const opponent = createPlayer(scene, {
 if (PROBE) window.__museTennis = { player, opponent };
 const ball = createBall(scene);
 const ai = createOpponentAI(opponent, ball);
-const serve = createServeController(player, ball, scene);
-if (PROBE) Object.assign(window.__museTennis, { serve, camera, scene });
+const fx = createGameFeel(scene);
+const serve = createServeController(player, ball, scene, fx);
+if (PROBE) Object.assign(window.__museTennis, { serve, camera, scene, ball, fx });
 
 // ---------- Rally: hitting, aim, reset ----------
 // Every point starts with a serve (side toggles via SERVE.points).
@@ -2165,7 +2552,7 @@ function updateScoreboard() {
   const el = document.getElementById('score');
   if (el) el.textContent = `🎾 Sätze ${SCORE.pS}:${SCORE.aS} • Spiele ${SCORE.pG}:${SCORE.aG} • Punkte ${pointText()}`;
 }
-function awardPoint(winner, reason) {
+function awardPoint(winner, reason, skipPointCallout) {
   if (winner === 'player') SCORE.p++; else SCORE.a++;
   let msg = (reason ? reason + ' – ' : '') + `Punkt ${(winner === 'player' ? 'für dich' : 'für die KI')} (${pointText()})`;
   // Game won? (4+ points and 2 ahead)
@@ -2181,8 +2568,15 @@ function awardPoint(winner, reason) {
       if (gd > 0) SCORE.pS++; else SCORE.aS++;
       msg = `SATZ ${(gd > 0 ? 'für dich' : 'für die KI')}! (Sätze ${SCORE.pS}:${SCORE.aS}) – neuer Satz`;
       SCORE.pG = 0; SCORE.aG = 0;
+      fx.callout('SATZ', 'game');
+    } else {
+      fx.callout('SPIEL', 'game');
     }
+  } else if (!skipPointCallout) {
+    fx.callout('PUNKT', 'point');
   }
+  fx.sound('point');
+  fx.kick();
   updateScoreboard();
   rallyHits = 0; deadTimer = 0;
   SERVE.points++; // serve side alternates every point played
@@ -2216,7 +2610,10 @@ function tryPlayerHit() {
   const d = Math.hypot(bp.x - pp.x, bp.z - pp.z);
   if (bp.z > -0.6 && bp.y < 2.6 && d < 2.4) {
     ball.hitter = 'player';
-    ball.hit(bp.clone(), playerAimTarget(), 0.95);
+    ball.hit(bp.clone(), playerAimTarget(), 1.15);
+    fx.sparkAt(bp);
+    fx.sound('hit');
+    fx.kick();
     serve.onRallyHit(); // serve watch off: live rally now
     rallyHits++;
     refreshStatus();
@@ -2225,10 +2622,10 @@ function tryPlayerHit() {
   return false; // whiff: swing animation plays anyway
 }
 
-function resetRally(msg, winner) {
+function resetRally(msg, winner, skipPointCallout) {
   // Rally point over: awarded points run the score (side toggles),
   // neutral endings (no hitter, e.g. lost ball) just re-serve without a point.
-  if (winner) { awardPoint(winner, msg); return; }
+  if (winner) { awardPoint(winner, msg, skipPointCallout); return; }
   rallyHits = 0;
   deadTimer = 0;
   serve.enterReady((msg ? msg + ' – ' : '') + 'neuer Aufschlag, ' + hitHint() + ' = hochwerfen');
@@ -2321,6 +2718,9 @@ renderer.setAnimationLoop(() => {
     opponent.update(dt, { x: 0, z: 0 });
   } else if (ai.update(dt)) {
     rallyHits++; refreshStatus(); serve.onRallyHit(); // AI hit -> count rally, serve over
+    fx.sparkAt(ball.mesh.position);
+    fx.sound('hit');
+    fx.kick();
   }
 
   // Split-step: the receiver hops when the hitter strikes (real tennis timing cue)
@@ -2334,15 +2734,27 @@ renderer.setAnimationLoop(() => {
   let bounce = null;
   if (!serve.holdsBall() && !serve.frozen()) bounce = ball.update(dt);
 
-  if (bounce && !serve.consumeBounce(bounce)) {
-    if (bounce.out) {
+  if (bounce) {
+    const handled = serve.consumeBounce(bounce);
+    const call = serve.lastCall;
+    const kind = (call === 'in' || call === 'let') ? 'serve' : (bounce.out || call === 'fault') ? 'out' : 'in';
+    fx.spawnBounce(bounce.x, bounce.z, kind);
+    fx.kick();
+    fx.sound(kind === 'out' ? 'out' : 'bounce');
+    if (handled) {
+      if (call === 'in') fx.callout('IN', 'in');
+      else if (call === 'let') fx.callout('LET', 'let');
+      else if (call === 'fault' && !SERVE.firstServe) fx.callout('AUS', 'out');
+    } else if (bounce.out) {
       // Out: the other side of the last hitter wins (strict line calls = TODO)
+      fx.callout('AUS', 'out');
       const w = ball.hitter === 'player' ? 'ai' : ball.hitter === 'ai' ? 'player' : null;
-      resetRally(`Aus bei (${bounce.x.toFixed(1)}, ${bounce.z.toFixed(1)})`, w);
+      resetRally(`Aus bei (${bounce.x.toFixed(1)}, ${bounce.z.toFixed(1)})`, w, true);
     } else if (bounce.n >= 2) {
       // Double bounce: whoever failed to return loses (no hitter = neutral replay)
+      fx.callout('DOPPELT', 'out');
       const w = ball.hitter ? (bounce.side === 'ai' ? 'player' : 'ai') : null;
-      resetRally('Doppelt aufgekommen!', w);
+      resetRally('Doppelt aufgekommen!', w, true);
     }
   }
 
@@ -2359,8 +2771,20 @@ renderer.setAnimationLoop(() => {
     deadTimer = 0;
   }
 
+  const airborne = !serve.holdsBall() && !serve.frozen()
+    && ball.mesh.position.y > BALL.radius + 0.06
+    && ball.velocity.length() > 1.2;
+  if (airborne) {
+    const land = ball.predictLanding();
+    fx.setGhost(land.x, land.z, true);
+  } else {
+    fx.setGhost(0, 0, false);
+  }
+  fx.update(dt);
+
   if (followCam) {
     desiredCam.copy(player.group.position).add(followOffset);
+    fx.applyKick(desiredCam, dt);
     camera.position.lerp(desiredCam, Math.min(1, dt * 3.5));
     desiredTarget.copy(player.group.position).add(followLook);
     controls.target.lerp(desiredTarget, Math.min(1, dt * 4.0));
