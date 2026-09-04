@@ -25,6 +25,7 @@ Ein interaktives 3D-Tennisspiel direkt im Browser, entwickelt mit **Three.js** i
 
 ## ✨ Features
 
+- 🐣 **Geriggter Mascot-Spieler:** Tripo-Vogel mit Mixamo-Skeleton (Finger, Zehen, Schwanz, Kamm), volumetrischem Skinning und Tennisschläger in der Schlaghand.
 - 🏟️ **US Open Court:** Realistische Abmessungen nach offiziellen ITF-Standards (Einzelfeld, Doppelfeld, Aufschlagfelder, Baseline, Netz mit realistischem Durchhang).
 - 🎯 **Aufschlag-Mechanik:** Interaktives Aufschlag-Minigame mit Ballwurf und Sweet-Spot Timing-Balken.
 - ⚡ **Ballphysik & Rallye:** Schwerkraft, Luftwiderstand, Netzkollision, Doppeldotz- und Aus-Erkennung.
@@ -39,9 +40,13 @@ Ein interaktives 3D-Tennisspiel direkt im Browser, entwickelt mit **Three.js** i
 
 ```text
 muse-tennis/
-├── index.html       # Gesamtes Spiel (Three.js WebGL, Spiellogik, UI, Physics)
-├── .gitignore       # Git Ignore
-└── README.md        # Projektdokumentation & Spiellink
+├── index.html                      # Spiel (Three.js, Logik, UI, Physik)
+├── assets/mascot-bird-rigged.glb   # Geriggter Spieler (Mixamo-Skeleton + Finger)
+├── assets/mascot-bird-rig.json     # Knochenkarte / Bind-Metadaten
+├── tools/rig_character.py          # CPU-Auto-Rigger (voxel-geodesic heat)
+├── mascot bird 3d model.glb        # Ungeriggtes Tripo-Quellmesh
+├── .gitignore
+└── README.md
 ```
 
 ---

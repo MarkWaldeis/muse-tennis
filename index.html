@@ -12,6 +12,10 @@
     background: rgba(0,0,0,0.45); padding: 8px 12px; border-radius: 8px;
     font-size: 13px; pointer-events: none; line-height: 1.4;
   }
+  #loading {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: #87a8c8; color: white; font-size: 18px; z-index: 20;
+  }
 </style>
 <script type="importmap">
 {
@@ -24,6 +28,7 @@
 </head>
 <body>
 <div id="app"></div>
+<div id="loading">Lade Spieler-Rig…</div>
 <div id="info">🎾 Tennis – Aufschlag & Rally<br>WASD: laufen • Space: Aufschlag/Schlag (Vorhand/Rückhand auto) • R: neu • C: Cam</div>
 <button id="camBtn" style="position:absolute;bottom:14px;left:12px;padding:8px 12px;border-radius:8px;border:none;background:rgba(0,0,0,0.55);color:white;font-size:13px;cursor:pointer;">📷 Follow-Cam: AN</button>
 <div id="status" style="position:absolute;bottom:14px;right:12px;color:white;background:rgba(0,0,0,0.55);padding:8px 12px;border-radius:8px;font-size:13px;pointer-events:none;">Ballwechsel: 0</div>
@@ -39,6 +44,8 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 // ============================================================
 // COURT_DIMENSIONS - Single source of truth for later game logic
@@ -73,11 +80,12 @@ export const COURT_DIMENSIONS = {
 };
 
 // ---------- Renderer / Scene / Camera ----------
+const PROBE = new URLSearchParams(location.search).has('probe');
 const container = document.getElementById('app');
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.shadowMap.enabled = true;
+const renderer = new THREE.WebGLRenderer({ antialias: !PROBE, powerPreference: PROBE ? 'low-power' : 'default' });
+renderer.setSize(PROBE ? 640 : window.innerWidth, PROBE ? 360 : window.innerHeight);
+renderer.setPixelRatio(PROBE ? 0.5 : Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = !PROBE;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
@@ -362,7 +370,7 @@ export function createTennisCourt(s) {
 }
 
 // ============================================================
-// PLAYER - cute chibi, procedural, no external models
+// PLAYER - rigged Tripo bird mascot (Mixamo skeleton, volumetric weights)
 // API for later game:
 //   const player = createPlayer(scene)
 //   player.group.position -> spawn / reset
@@ -380,6 +388,60 @@ export const PLAYER = {
     shoes: 0xffffff, cap: 0x2a5dca, racket: 0xffd23f
   }
 };
+
+// Rigged Tripo mascot: 1m bind pose, Mixamo joints, volumetric weights.
+const MASCOT_SCALE = 1.65;
+const MASCOT_URL = 'assets/mascot-bird-rigged.glb';
+let mascotGltf = null;
+
+function collectBones(root) {
+  const map = new Map();
+  root.traverse((o) => { if (o.isBone) map.set(o.name, o); });
+  return map;
+}
+function boneByName(bones, name) {
+  // GLTFLoader sanitizes ':' in node names (PropertyBinding), so mixamorig:Hips → mixamorigHips.
+  return bones.get(name)
+    || bones.get(name.replaceAll(':', ''))
+    || bones.get(name.replace('mixamorig:', ''))
+    || null;
+}
+
+// T-pose wings sit along ±X. Tennis poses use:
+//   down: 1 = hang, 0 = T-pose, -1 = straight up
+//   fwd:  + toward the net (-Z), − take-back
+// Racket is parented so it stays outboard of the hand (never through the belly).
+function armDownZ(side, down) {
+  return -side * Math.PI * 0.5 * down;
+}
+function easeInOutCubic(k) { k = THREE.MathUtils.clamp(k, 0, 1); return k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2; }
+function easeOutCubic(k) { k = THREE.MathUtils.clamp(k, 0, 1); return 1 - Math.pow(1 - k, 3); }
+function easeInCubic(k) { k = THREE.MathUtils.clamp(k, 0, 1); return k * k * k; }
+const lerp = THREE.MathUtils.lerp;
+
+function poseTail(bones, t, intensity) {
+  const a = Math.sin(t * 4.2) * 0.18 * (0.25 + intensity);
+  const b = Math.sin(t * 5.1 + 0.6) * 0.12 * (0.25 + intensity);
+  const tail = boneByName(bones, 'mixamorig:Tail');
+  const tail1 = boneByName(bones, 'mixamorig:Tail1');
+  const tail2 = boneByName(bones, 'mixamorig:Tail2');
+  const crest = boneByName(bones, 'mixamorig:Head_Crest1');
+  if (tail) tail.rotation.y = a;
+  if (tail1) tail1.rotation.y = a * 0.7;
+  if (tail2) tail2.rotation.x = b;
+  if (crest) crest.rotation.z = Math.sin(t * 3.2) * 0.08;
+}
+
+function curlFingers(bones, tag, amount) {
+  const side = tag === 'Left' ? -1 : 1;
+  for (const f of ['Thumb', 'Index', 'Middle', 'Ring', 'Pinky']) {
+    const thumb = f === 'Thumb' ? 0.55 : 1;
+    for (let n = 1; n <= 3; n++) {
+      const b = boneByName(bones, `mixamorig:${tag}Hand${f}${n}`);
+      if (b) b.rotation.y = side * amount * thumb * (0.55 + n * 0.28);
+    }
+  }
+}
 
 // Groundstroke keyframe durations (s); forehand/backhand total ~0.47s
 // Phases: PREP (unit turn) -> LOOP (take-back) -> SWING (explosive) -> FOLLOW (recover)
@@ -436,74 +498,73 @@ export function createPlayer(s, opts = {}) {
   root.name = 'playerRoot';
   group.add(root);
 
-  const skinMat = new THREE.MeshStandardMaterial({ color: C.skin, roughness: 0.7 });
-  const shirtMat = new THREE.MeshStandardMaterial({ color: opts.shirtColor ?? C.shirt, roughness: 0.8 });
-  const shortsMat = new THREE.MeshStandardMaterial({ color: C.shorts, roughness: 0.8 });
-  const shoeMat = new THREE.MeshStandardMaterial({ color: C.shoes, roughness: 0.6 });
-  const capMat = new THREE.MeshStandardMaterial({ color: C.cap, roughness: 0.7 });
-
   function shadowed(m) { m.castShadow = true; return m; }
 
-  // Legs (pivot at hip for swing)
-  function makeLeg(side) {
-    const hip = new THREE.Group();
-    hip.position.set(0.14 * side, 0.45, 0);
-    const leg = shadowed(new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.22, 6, 12), skinMat));
-    leg.position.set(0, -0.18, 0);
-    hip.add(leg);
-    const shoe = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.10, 0.28), shoeMat));
-    shoe.position.set(0, -0.38, -0.05); // toe forward (-z, towards net)
-    hip.add(shoe);
-    root.add(hip);
-    return hip;
-  }
-  const legL = makeLeg(-1);
-  const legR = makeLeg(1);
+  const model = SkeletonUtils.clone(mascotGltf.scene);
+  model.name = 'mascot';
+  model.scale.setScalar(MASCOT_SCALE);
+  model.traverse((o) => {
+    if (!o.isMesh) return;
+    o.castShadow = true;
+    o.receiveShadow = true;
+    o.frustumCulled = false;
+    if (opts.shirtColor != null) {
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      const tinted = mats.map((m) => {
+        const c = m.clone();
+        c.color = c.color.clone().lerp(new THREE.Color(opts.shirtColor), 0.4);
+        return c;
+      });
+      o.material = Array.isArray(o.material) ? tinted : tinted[0];
+    }
+  });
+  root.add(model);
 
-  // Shorts + torso
-  const shorts = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.22, 0.26), shortsMat));
-  shorts.position.set(0, 0.52, 0);
-  root.add(shorts);
+  const bones = collectBones(model);
+  const leftArm = boneByName(bones, 'mixamorig:LeftArm');
+  const rightArm = boneByName(bones, 'mixamorig:RightArm');
+  const leftFore = boneByName(bones, 'mixamorig:LeftForeArm');
+  const rightFore = boneByName(bones, 'mixamorig:RightForeArm');
+  const leftHand = boneByName(bones, 'mixamorig:LeftHand');
+  const rightHand = boneByName(bones, 'mixamorig:RightHand');
+  const leftShoulder = boneByName(bones, 'mixamorig:LeftShoulder');
+  const rightShoulder = boneByName(bones, 'mixamorig:RightShoulder');
+  const legL = boneByName(bones, 'mixamorig:LeftUpLeg');
+  const legR = boneByName(bones, 'mixamorig:RightUpLeg');
+  const kneeL = boneByName(bones, 'mixamorig:LeftLeg');
+  const kneeR = boneByName(bones, 'mixamorig:RightLeg');
+  const spine = boneByName(bones, 'mixamorig:Spine');
+  const spine1 = boneByName(bones, 'mixamorig:Spine1');
+  const hipsBone = boneByName(bones, 'mixamorig:Hips');
+  const neckBone = boneByName(bones, 'mixamorig:Neck');
+  const torso = spine1 || root;
+  const headGroup = boneByName(bones, 'mixamorig:Head') || root;
 
-  const torso = shadowed(new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.28, 8, 16), shirtMat));
-  torso.position.set(0, 0.82, 0);
-  torso.name = 'playerTorso';
-  root.add(torso);
+  const fistL = {
+    getWorldPosition(out) {
+      group.updateMatrixWorld(true);
+      if (leftHand) return leftHand.getWorldPosition(out);
+      return out.copy(group.position).setY(group.position.y + 1.1);
+    }
+  };
+  const fistR = rightHand || root;
 
-  // Left arm (swings freely)
-  const armL = new THREE.Group();
-  armL.position.set(-0.32, 0.95, 0);
-  const armLMesh = shadowed(new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.22, 6, 12), skinMat));
-  armLMesh.position.set(0, -0.16, 0);
-  armL.add(armLMesh);
-  const fistL = shadowed(new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 10), skinMat));
-  fistL.position.set(0, -0.32, 0);
-  armL.add(fistL);
-  root.add(armL);
-
-  // Right arm (holds racket up)
-  const armR = new THREE.Group();
-  armR.position.set(0.32, 0.95, 0);
-  const armRMesh = shadowed(new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.22, 6, 12), skinMat));
-  armRMesh.position.set(0, -0.16, 0);
-  armR.add(armRMesh);
-  // Fist grips the handle: racket handle passes through it
-  const fistR = shadowed(new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 10), skinMat));
-  fistR.position.set(0, -0.32, -0.02);
-  armR.add(fistR);
-
-  // Racket in right fist - realistic: grip in fist, head up + forward,
-  // string bed facing the net (-z), oval head + throat + butt cap
+  // Racket lives on the right hand. Local +Y of the hand is outboard when the
+  // arm hangs, so the head stays outside the belly. Wrist cock (wz≈π/2) lifts
+  // the head up for ready/groundstrokes; serve poses point it along the arm.
+  const racketMount = new THREE.Group();
+  racketMount.name = 'racketMount';
+  if (rightHand) rightHand.add(racketMount);
+  else root.add(racketMount);
   const racket = new THREE.Group();
-  racket.position.set(0, -0.32, -0.04);
-  racket.rotation.x = -0.25; // tilt head slightly toward net
-  racket.rotation.z = -0.12; // slight outward angle
+  racket.name = 'racket';
+  racketMount.add(racket);
   const gripMat = new THREE.MeshStandardMaterial({ color: 0x2b2b2b, roughness: 0.9 });
   const handle = shadowed(new THREE.Mesh(
     new THREE.CylinderGeometry(0.024, 0.026, 0.30, 10),
     new THREE.MeshStandardMaterial({ color: 0x5b3a1e, roughness: 0.7 })
   ));
-  handle.position.y = 0.02; // grip passes through fist at origin
+  handle.position.y = 0.02;
   racket.add(handle);
   const buttCap = shadowed(new THREE.Mesh(
     new THREE.CylinderGeometry(0.032, 0.032, 0.025, 10),
@@ -514,7 +575,6 @@ export function createPlayer(s, opts = {}) {
   const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.027, 0.027, 0.12, 10), gripMat);
   grip.position.y = -0.06;
   racket.add(grip);
-  // Throat: two shafts from handle top to oval head
   const throatMat = new THREE.MeshStandardMaterial({ color: C.racket, roughness: 0.5 });
   [-0.055, 0.055].forEach(x => {
     const shaft = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.20, 8), throatMat));
@@ -522,7 +582,6 @@ export function createPlayer(s, opts = {}) {
     shaft.rotation.z = -x * 1.1;
     racket.add(shaft);
   });
-  // Oval head (real rackets are not round), string bed faces net (-z)
   const headFrame = shadowed(new THREE.Mesh(
     new THREE.TorusGeometry(0.20, 0.026, 12, 32),
     throatMat
@@ -537,42 +596,410 @@ export function createPlayer(s, opts = {}) {
   strings.scale.y = 1.25;
   strings.position.y = 0.50;
   racket.add(strings);
-  armR.add(racket);
-  root.add(armR);
-
-  // Big chibi head + face + cap
-  const headGroup = new THREE.Group();
-  headGroup.position.set(0, 1.32, 0);
-  headGroup.name = 'playerHead';
-  const head = shadowed(new THREE.Mesh(new THREE.SphereGeometry(0.30, 24, 18), skinMat));
-  headGroup.add(head);
-  const eyeMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.4 });
-  [-0.11, 0.11].forEach(x => {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 10), eyeMat);
-    eye.position.set(x, 0.03, -0.26); // face -z = towards net
-    headGroup.add(eye);
-    const spark = new THREE.Mesh(new THREE.SphereGeometry(0.015, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffffff }));
-    spark.position.set(x + 0.015, 0.045, -0.295);
-    headGroup.add(spark);
-  });
-  const smile = new THREE.Mesh(
-    new THREE.TorusGeometry(0.07, 0.012, 8, 16, Math.PI),
-    new THREE.MeshStandardMaterial({ color: 0x663333, side: THREE.DoubleSide })
-  );
-  smile.position.set(0, -0.08, -0.27);
-  smile.rotation.x = Math.PI; // mouth curve down->up? cute smile
-  smile.rotation.z = Math.PI;
-  headGroup.add(smile);
-  // cap: half sphere + brim forward (-z, towards net)
-  const cap = shadowed(new THREE.Mesh(new THREE.SphereGeometry(0.31, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2.2), capMat));
-  cap.position.y = 0.06;
-  headGroup.add(cap);
-  const brim = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.04, 0.22), capMat));
-  brim.position.set(0, 0.12, -0.34);
-  headGroup.add(brim);
-  root.add(headGroup);
+  const racketHead = new THREE.Object3D();
+  racketHead.name = 'racketHead';
+  racketHead.position.set(0, 0.70, 0);
+  racket.add(racketHead);
+  const racketTip = new THREE.Object3D();
+  racketTip.name = 'racketTip';
+  racketTip.position.set(0, 0.38, 0);
+  racket.add(racketTip);
+  const racketRimL = new THREE.Object3D();
+  racketRimL.name = 'racketRimL';
+  racketRimL.position.set(-0.20, 0.50, 0);
+  racket.add(racketRimL);
+  const racketRimR = new THREE.Object3D();
+  racketRimR.name = 'racketRimR';
+  racketRimR.position.set(0.20, 0.50, 0);
+  racket.add(racketRimR);
 
   s.add(group);
+
+  const _clearA = new THREE.Vector3();
+  const _clearB = new THREE.Vector3();
+  const _clearP = new THREE.Vector3();
+  const _clearC = new THREE.Vector3();
+  const _clearAB = new THREE.Vector3();
+  const BODY_CLEAR = 0.50; // world metres: round torso + frame + margin
+
+  function poseArm(side, p) {
+    const arm = side < 0 ? leftArm : rightArm;
+    const fore = side < 0 ? leftFore : rightFore;
+    const hand = side < 0 ? leftHand : rightHand;
+    const sh = side < 0 ? leftShoulder : rightShoulder;
+    if (sh) sh.rotation.set(0, 0, -side * (p.sh ?? 0.12));
+    if (arm) {
+      // `out` always blends toward T-pose (z→0) so the arm stays outside the torso
+      // whether it is hanging (ready) or raised (trophy / overhead).
+      const baseZ = armDownZ(side, p.down ?? 0.85);
+      const out = p.out ?? 0;
+      const z = baseZ === 0 ? side * out : baseZ + Math.sign(-baseZ) * out;
+      arm.rotation.set(p.twist ?? 0, side * (p.fwd ?? 0), z);
+    }
+    if (fore) fore.rotation.set(0, p.foreY ?? 0, -side * (p.elbow ?? 0.55));
+    if (hand) hand.rotation.set(p.wx ?? 0, p.wy ?? 0, p.wz ?? Math.PI * 0.5);
+  }
+
+  function poseLegs(p) {
+    if (legL) legL.rotation.set(p.legLX ?? 0.12, 0, p.legLZ ?? 0.08);
+    if (legR) legR.rotation.set(p.legRX ?? -0.12, 0, p.legRZ ?? -0.08);
+    if (kneeL) kneeL.rotation.set(p.kneeL ?? 0.35, 0, 0);
+    if (kneeR) kneeR.rotation.set(p.kneeR ?? 0.35, 0, 0);
+  }
+
+  const _clearH = new THREE.Vector3();
+  const HEAD_CLEAR = 0.42;
+
+  function keepRacketClear() {
+    if (!hipsBone || !neckBone) return;
+    const samples = [racketHead, racketTip, headFrame, racketRimL, racketRimR];
+    for (let iter = 0; iter < 4; iter++) {
+      group.updateMatrixWorld(true);
+      hipsBone.getWorldPosition(_clearA);
+      neckBone.getWorldPosition(_clearB);
+      if (headGroup) headGroup.getWorldPosition(_clearH);
+      _clearAB.subVectors(_clearB, _clearA);
+      const abLen2 = Math.max(_clearAB.lengthSq(), 1e-6);
+      let push = 0;
+      for (const s of samples) {
+        if (!s) continue;
+        s.getWorldPosition(_clearP);
+        const t = THREE.MathUtils.clamp(_clearC.subVectors(_clearP, _clearA).dot(_clearAB) / abLen2, 0, 1);
+        _clearC.copy(_clearA).addScaledVector(_clearAB, t);
+        const dist = _clearP.distanceTo(_clearC);
+        if (dist < BODY_CLEAR) push = Math.max(push, BODY_CLEAR - dist);
+        if (headGroup) {
+          const hd = _clearP.distanceTo(_clearH);
+          if (hd < HEAD_CLEAR) push = Math.max(push, HEAD_CLEAR - hd);
+        }
+      }
+      if (push < 0.002) break;
+      if (rightArm) {
+        const z = rightArm.rotation.z;
+        rightArm.rotation.z = z + (z === 0 ? 0.35 : Math.sign(-z)) * push * 1.35;
+      }
+      if (rightShoulder) rightShoulder.rotation.z -= push * 0.4;
+      // Wrist: blend toward a cock that keeps the hoop outboard, not further across the skull.
+      if (rightHand) {
+        const overhead = rightArm && rightArm.rotation.z > 0.25;
+        const targetWz = overhead ? 0.22 : 0.7;
+        rightHand.rotation.z += (targetWz - rightHand.rotation.z) * Math.min(1, push * 2.2);
+      }
+      racket.rotation.z += push * 0.2;
+    }
+    racketHead.getWorldPosition(_clearP);
+    if (_clearP.y < 0.22) {
+      const lift = 0.22 - _clearP.y;
+      if (rightArm && rightArm.rotation.z > 0.15) {
+        rightArm.rotation.z += lift * 0.9;
+        if (rightHand) rightHand.rotation.z += (0.25 - rightHand.rotation.z) * Math.min(1, lift * 3);
+      } else if (rightHand) {
+        rightHand.rotation.z += lift * 1.1;
+        racket.rotation.x -= lift * 0.7;
+      }
+    }
+  }
+
+  function sampleRacketClearance() {
+    group.updateMatrixWorld(true);
+    if (!hipsBone || !neckBone) return { minDist: Infinity, headY: 0, clips: false };
+    hipsBone.getWorldPosition(_clearA);
+    neckBone.getWorldPosition(_clearB);
+    _clearAB.subVectors(_clearB, _clearA);
+    const abLen2 = Math.max(_clearAB.lengthSq(), 1e-6);
+    let minDist = Infinity;
+    for (const s of [racketHead, racketTip, headFrame, racketRimL, racketRimR]) {
+      if (!s) continue;
+      s.getWorldPosition(_clearP);
+      const t = THREE.MathUtils.clamp(_clearC.subVectors(_clearP, _clearA).dot(_clearAB) / abLen2, 0, 1);
+      _clearC.copy(_clearA).addScaledVector(_clearAB, t);
+      minDist = Math.min(minDist, _clearP.distanceTo(_clearC));
+    }
+    racketHead.getWorldPosition(_clearP);
+    return { minDist, headY: _clearP.y, clips: minDist < BODY_CLEAR - 0.02 };
+  }
+
+  // Named tennis clips. Arms stay outside the mascot's round torso; the
+  // racket head is always outboard of the right hand (keepRacketClear is a backstop).
+  function applyTennisPose(name, k, extra) {
+    const e = extra || {};
+    const bob = e.bob ?? 0;
+    const hop = e.hop ?? 0;
+    let P; // filled per clip
+    switch (name) {
+      case 'idle': {
+        // Athletic ready: racket in front of the right hip, left hand near the throat.
+        P = {
+          rootY: bob + hop - 0.03,
+          rootRX: 0.05,
+          rootRY: 0,
+          rootRZ: THREE.MathUtils.clamp(-(e.vx ?? 0) * 0.02, -0.1, 0.1),
+          spineY: 0.04,
+          headX: 0.06 + Math.sin((e.time ?? 0) * 1.8) * 0.02,
+          headZ: 0,
+          R: { down: 0.70, fwd: 0.32, out: 0.28, elbow: 0.95, wz: 1.22, wx: -0.12, sh: 0.16 },
+          L: { down: 0.66, fwd: 0.48, out: 0.16, elbow: 0.72, wz: 0.35, sh: 0.1 },
+          legLX: 0.22, legRX: -0.28, legLZ: e.split ? 0.22 : 0.1, legRZ: e.split ? -0.22 : -0.1,
+          kneeL: 0.42, kneeR: 0.48,
+          racket: { x: -0.18, y: Math.PI, z: 0.06 },
+          fingersR: 0.55, fingersL: 0.22
+        };
+        break;
+      }
+      case 'run': {
+        const run = e.intensity ?? 0;
+        const w = e.walk ?? 0;
+        // Racket stays in front of the hitting side — no sprinter arm-pump through the belly.
+        P = {
+          rootY: bob + hop,
+          rootRX: -faceDir * run * 0.10,
+          rootRY: 0,
+          rootRZ: THREE.MathUtils.clamp(-(e.vx ?? 0) * 0.02, -0.12, 0.12),
+          spineY: 0,
+          headX: run * 0.08 + Math.sin((e.time ?? 0) * 1.8) * 0.03,
+          headZ: Math.sin(w * 1.2) * 0.06 * run,
+          R: { down: 0.68, fwd: 0.28 + Math.sin(w * 2.4) * 0.08 * run, out: 0.26, elbow: 0.9, wz: 1.2, wx: -0.1, sh: 0.14 },
+          L: { down: 0.62, fwd: 0.4 - Math.sin(w * 2.4) * 0.22 * run, out: 0.14, elbow: 0.5, wz: 0.3 },
+          legLX: 0.12 + Math.sin(w * 2.4) * 0.7 * run,
+          legRX: -0.12 - Math.sin(w * 2.4) * 0.7 * run,
+          legLZ: e.split ? 0.22 : 0.08,
+          legRZ: e.split ? -0.22 : -0.08,
+          kneeL: 0.25 + Math.max(0, -Math.sin(w * 2.4)) * 0.55 * run,
+          kneeR: 0.25 + Math.max(0, Math.sin(w * 2.4)) * 0.55 * run,
+          racket: { x: -0.16, y: Math.PI, z: 0.06 },
+          fingersR: 0.5, fingersL: 0.12
+        };
+        break;
+      }
+      case 'forehand': {
+        const T = STROKE_TIMING, D = T.prep + T.loop + T.swing + T.follow;
+        const K1 = T.prep / D, K2 = (T.prep + T.loop) / D, K3 = (T.prep + T.loop + T.swing) / D;
+        let yaw, crouch, Rd, Rf, Re, Ld, Lf, rx, wz, Rout;
+        if (k < K1) {
+          const u = easeInOutCubic(k / K1);
+          yaw = lerp(0, 0.55, u); crouch = -0.04 * u;
+          Rd = lerp(0.70, 0.62, u); Rf = lerp(0.32, -0.55, u); Re = lerp(0.95, 1.05, u);
+          Ld = lerp(0.66, 0.65, u); Lf = lerp(0.48, 0.7, u);
+          rx = lerp(-0.18, -0.45, u); wz = lerp(1.22, 0.95, u); Rout = lerp(0.28, 0.34, u);
+        } else if (k < K2) {
+          const u = easeInOutCubic((k - K1) / (K2 - K1));
+          yaw = 0.55; crouch = -0.05;
+          Rd = lerp(0.62, 0.58, u); Rf = lerp(-0.55, -0.72, u); Re = 1.05;
+          Ld = 0.65; Lf = 0.7;
+          rx = lerp(-0.45, -0.65, u); wz = 0.95; Rout = 0.36;
+        } else if (k < K3) {
+          const ke = (k - K2) / (K3 - K2);
+          const yawE = easeOutCubic(Math.min(1, ke * 1.35));
+          const armE = easeInCubic(Math.max(0, (ke - 0.2) / 0.8));
+          yaw = lerp(0.55, -0.2, yawE); crouch = -0.05 * (1 - armE);
+          Rd = lerp(0.58, 0.52, armE); Rf = lerp(-0.72, 0.7, armE); Re = lerp(1.05, 0.4, armE);
+          Ld = lerp(0.65, 0.7, armE); Lf = lerp(0.7, 0.2, armE);
+          rx = lerp(-0.65, -0.05, armE); wz = lerp(0.95, 0.55, armE); Rout = lerp(0.36, 0.34, armE);
+        } else {
+          const u = easeInOutCubic((k - K3) / (1 - K3));
+          yaw = lerp(-0.2, 0, u); crouch = 0;
+          Rd = lerp(0.52, 0.70, u); Rf = lerp(0.7, 0.32, u); Re = lerp(0.4, 0.95, u);
+          Ld = lerp(0.7, 0.66, u); Lf = lerp(0.2, 0.48, u);
+          rx = lerp(-0.05, -0.18, u); wz = lerp(0.55, 1.22, u); Rout = lerp(0.34, 0.28, u);
+        }
+        P = {
+          rootY: bob + hop + crouch, rootRX: 0.04, rootRY: yaw, rootRZ: 0,
+          spineY: yaw * 0.35, headX: 0.12, headZ: 0,
+          R: { down: Rd, fwd: Rf, out: Rout, elbow: Re, wz, wx: rx * 0.35, sh: 0.18 },
+          L: { down: Ld, fwd: Lf, out: 0.16, elbow: 0.4, wz: 0.3 },
+          legLX: 0.28, legRX: -0.35, legLZ: 0.1, legRZ: -0.12,
+          kneeL: 0.45, kneeR: 0.55,
+          racket: { x: rx, y: Math.PI, z: 0.05 },
+          fingersR: 0.72, fingersL: 0.15
+        };
+        break;
+      }
+      case 'backhand': {
+        const T = STROKE_TIMING, D = T.prep + T.loop + T.swing + T.follow;
+        const K1 = T.prep / D, K2 = (T.prep + T.loop) / D, K3 = (T.prep + T.loop + T.swing) / D;
+        let yaw, crouch, Rd, Rf, Re, Ld, Lf, Le, rx, wz, Rout;
+        if (k < K1) {
+          const u = easeInOutCubic(k / K1);
+          yaw = lerp(0, -0.55, u); crouch = -0.04 * u;
+          Rd = lerp(0.70, 0.62, u); Rf = lerp(0.32, -0.12, u); Re = lerp(0.95, 0.95, u);
+          Ld = lerp(0.66, 0.7, u); Lf = lerp(0.48, -0.55, u); Le = lerp(0.55, 0.9, u);
+          rx = lerp(-0.18, -0.35, u); wz = lerp(1.22, 0.9, u); Rout = lerp(0.28, 0.36, u);
+        } else if (k < K2) {
+          const u = easeInOutCubic((k - K1) / (K2 - K1));
+          yaw = -0.55; crouch = lerp(-0.04, -0.06, u);
+          Rd = 0.62; Rf = lerp(-0.12, -0.22, u); Re = 0.95;
+          Ld = 0.7; Lf = lerp(-0.55, -0.68, u); Le = 0.95;
+          rx = -0.35; wz = 0.9; Rout = 0.38;
+        } else if (k < K3) {
+          const u = easeInCubic((k - K2) / (K3 - K2));
+          yaw = lerp(-0.55, 0.28, u); crouch = -0.06 * (1 - u);
+          Rd = lerp(0.62, 0.55, u); Rf = lerp(-0.22, 0.62, u); Re = lerp(0.95, 0.42, u);
+          Ld = lerp(0.7, 0.62, u); Lf = lerp(-0.68, 0.5, u); Le = lerp(0.95, 0.45, u);
+          rx = lerp(-0.35, -0.05, u); wz = lerp(0.9, 0.55, u); Rout = lerp(0.38, 0.34, u);
+        } else {
+          const u = easeInOutCubic((k - K3) / (1 - K3));
+          yaw = lerp(0.28, 0, u); crouch = 0;
+          Rd = lerp(0.55, 0.70, u); Rf = lerp(0.62, 0.32, u); Re = lerp(0.42, 0.95, u);
+          Ld = lerp(0.62, 0.66, u); Lf = lerp(0.5, 0.48, u); Le = lerp(0.45, 0.72, u);
+          rx = lerp(-0.05, -0.18, u); wz = lerp(0.55, 1.22, u); Rout = lerp(0.34, 0.28, u);
+        }
+        P = {
+          rootY: bob + hop + crouch, rootRX: 0.02, rootRY: yaw, rootRZ: 0,
+          spineY: yaw * 0.4, headX: 0.1, headZ: 0,
+          R: { down: Rd, fwd: Rf, out: Rout, elbow: Re, wz, wx: 0.08, sh: 0.16 },
+          L: { down: Ld, fwd: Lf, out: 0.22, elbow: Le, wz: 0.6, sh: 0.12 },
+          legLX: 0.38, legRX: -0.22, legLZ: 0.12, legRZ: -0.08,
+          kneeL: 0.55, kneeR: 0.4,
+          racket: { x: rx, y: Math.PI, z: -0.05 },
+          fingersR: 0.7, fingersL: 0.55
+        };
+        break;
+      }
+      case 'serveReady': {
+        const rock = e.rock ?? 0;
+        P = {
+          rootY: -0.05 + bob, rootRX: 0.04, rootRY: 0.42, rootRZ: 0,
+          spineY: 0.15, headX: 0.04, headZ: 0,
+          R: { down: 0.78, fwd: 0.18, out: 0.30, elbow: 1.05, wz: 1.35, wx: -0.12, sh: 0.14 },
+          L: { down: 0.68, fwd: 0.55, out: 0.14, elbow: 0.45, wz: 0.2 },
+          legLX: 0.32, legRX: -0.4, legLZ: 0.1, legRZ: -0.1,
+          kneeL: 0.55, kneeR: 0.65,
+          racket: { x: -0.2, y: Math.PI, z: 0.1 },
+          fingersR: 0.6, fingersL: 0.2
+        };
+        root.position.z = rock;
+        break;
+      }
+      case 'serveToss': {
+        const kUp = e.kUp ?? 0;
+        const kTrophy = e.kTrophy ?? 0;
+        P = {
+          rootY: lerp(-0.05, -0.1, kTrophy),
+          rootRX: lerp(0.04, -0.08, kTrophy),
+          rootRY: lerp(0.42, 0.62, kTrophy),
+          rootRZ: 0,
+          spineY: lerp(0.15, 0.28, kTrophy),
+          headX: lerp(0.04, 0.45, kUp),
+          headZ: Math.sin(kUp * 9) * 0.02,
+          // Toss arm goes straight up, away from the head (out > 0).
+          L: { down: lerp(0.68, -0.85, kUp), fwd: lerp(0.55, 0.15, kUp), out: lerp(0.14, 0.28, kUp), elbow: lerp(0.45, 0.12, kUp), wz: 0.15 },
+          // Trophy: upper arm raised, racket head UP and behind the hitting shoulder (not a backscratch to the court).
+          R: { down: lerp(0.78, -0.62, kTrophy), fwd: lerp(0.18, -0.38, kTrophy), out: lerp(0.30, 0.36, kTrophy), elbow: lerp(1.05, 0.75, kTrophy), wz: lerp(1.35, 0.22, kTrophy), wx: lerp(-0.12, 0.12, kTrophy), sh: lerp(0.14, 0.28, kTrophy) },
+          legLX: lerp(0.32, 0.5, kTrophy), legRX: lerp(-0.4, -0.55, kTrophy),
+          legLZ: 0.1, legRZ: -0.1,
+          kneeL: lerp(0.55, 0.75, kTrophy), kneeR: lerp(0.65, 0.85, kTrophy),
+          racket: { x: lerp(-0.2, 0.35, kTrophy), y: Math.PI, z: lerp(0.1, 0.2, kTrophy) },
+          fingersR: 0.65, fingersL: 0.25
+        };
+        break;
+      }
+      case 'serveStrike': {
+        const w = easeInCubic(k);
+        const freeze = e.freeze ?? 0;
+        P = {
+          rootY: lerp(-0.1, 0.12, w),
+          rootRX: lerp(-0.08, 0.06, w),
+          rootRY: lerp(0.62, -0.35, w),
+          rootRZ: 0,
+          spineY: lerp(0.28, -0.15, w),
+          headX: lerp(0.45, 0.12, w),
+          headZ: 0,
+          L: { down: w < 0.4 ? -0.85 : lerp(-0.85, 0.35, (w - 0.4) / 0.6), fwd: 0.15, out: 0.26, elbow: 0.2, wz: 0.15 },
+          // Overhead whip: arm goes UP and FORWARD on the right side.
+          R: { down: lerp(-0.62, -0.88, w), fwd: lerp(-0.38, 0.5, w), out: lerp(0.36, 0.40, w), elbow: lerp(0.75, 0.18, w), wz: lerp(0.22, 0.35, w), wx: lerp(0.12, -0.05, w), sh: lerp(0.28, 0.16, w) },
+          legLX: lerp(0.5, 0.08, w), legRX: lerp(-0.55, -0.08, w),
+          legLZ: 0.1, legRZ: -0.1,
+          kneeL: lerp(0.75, 0.2, w), kneeR: lerp(0.85, 0.2, w),
+          racket: { x: lerp(0.35, -0.15, w), y: Math.PI, z: freeze > 0 ? lerp(0.2, 0.55, easeOutCubic(1 - freeze)) : lerp(0.55, 0.1, w) },
+          fingersR: 0.75, fingersL: 0.2
+        };
+        break;
+      }
+      case 'serveFollow': {
+        const u = easeInOutCubic(k);
+        const happy = e.happy ? Math.abs(Math.sin(k * Math.PI * 2)) * 0.08 * (1 - k * 0.5) : 0;
+        P = {
+          rootY: lerp(0.12, 0, u) + happy,
+          rootRX: lerp(0.06, 0, u),
+          rootRY: lerp(-0.35, 0, u),
+          rootRZ: 0,
+          spineY: lerp(-0.15, 0, u),
+          headX: lerp(0.12, 0, u),
+          headZ: e.happy ? Math.sin(k * 12) * 0.08 : 0,
+          L: { down: lerp(0.35, 0.66, u), fwd: lerp(0.15, 0.48, u), out: 0.14, elbow: lerp(0.2, 0.72, u), wz: 0.3 },
+          // Recover to the ready on the RIGHT — never wrap the frame through the torso.
+          R: { down: lerp(-0.88, 0.70, u), fwd: lerp(0.5, 0.32, u), out: lerp(0.40, 0.28, u), elbow: lerp(0.18, 0.95, u), wz: lerp(0.35, 1.22, u), wx: lerp(-0.05, -0.12, u), sh: 0.16 },
+          legLX: lerp(0.08, 0.35, u), legRX: lerp(-0.08, -0.45, u),
+          legLZ: 0.1, legRZ: -0.1,
+          kneeL: lerp(0.2, 0.5, u), kneeR: lerp(0.2, 0.7, u),
+          racket: { x: lerp(-0.15, -0.18, u), y: Math.PI, z: lerp(0.1, 0.08, u) },
+          fingersR: 0.55, fingersL: 0.12
+        };
+        root.position.z = -0.28 * Math.sin(u * Math.PI);
+        break;
+      }
+      default: {
+        P = {
+          rootY: bob, rootRX: 0, rootRY: 0, rootRZ: 0,
+          spineY: 0, headX: 0, headZ: 0,
+          R: { down: 0.70, fwd: 0.32, out: 0.26, elbow: 0.9, wz: 1.22 },
+          L: { down: 0.66, fwd: 0.4, out: 0.14, elbow: 0.55, wz: 0.3 },
+          legLX: 0.12, legRX: -0.12, legLZ: 0.08, legRZ: -0.08,
+          kneeL: 0.3, kneeR: 0.3,
+          racket: { x: -0.15, y: Math.PI, z: 0.08 },
+          fingersR: 0.35, fingersL: 0.1
+        };
+        break;
+      }
+    }
+    root.position.y = P.rootY;
+    if (name !== 'serveReady' && name !== 'serveFollow') root.position.z = 0;
+    root.rotation.set(P.rootRX, P.rootRY, P.rootRZ);
+    if (spine) spine.rotation.y = P.spineY;
+    if (torso && torso.scale) torso.scale.y = e.breathe ?? 1;
+    headGroup.rotation.set(P.headX, 0, P.headZ);
+    poseArm(1, P.R);
+    poseArm(-1, P.L);
+    poseLegs(P);
+    racket.rotation.set(P.racket.x, P.racket.y, P.racket.z);
+    curlFingers(bones, 'Right', P.fingersR);
+    curlFingers(bones, 'Left', P.fingersL);
+    poseTail(bones, e.time ?? 0, e.intensity ?? 0);
+    keepRacketClear();
+  }
+
+  function captureRig() {
+    const list = [];
+    model.traverse((o) => {
+      if (o.isBone) list.push({ b: o, q: o.quaternion.clone() });
+    });
+    return {
+      bones: list,
+      rootP: root.position.clone(),
+      rootR: root.rotation.clone(),
+      racketR: racket.rotation.clone()
+    };
+  }
+  function blendRig(from, e) {
+    if (!from) return;
+    for (const s of from.bones) {
+      const target = s.b.quaternion.clone();
+      s.b.quaternion.copy(s.q).slerp(target, e);
+    }
+    root.position.lerpVectors(from.rootP, root.position, e);
+    root.rotation.x = lerp(from.rootR.x, root.rotation.x, e);
+    root.rotation.y = lerp(from.rootR.y, root.rotation.y, e);
+    root.rotation.z = lerp(from.rootR.z, root.rotation.z, e);
+    racket.rotation.x = lerp(from.racketR.x, racket.rotation.x, e);
+    racket.rotation.y = lerp(from.racketR.y, racket.rotation.y, e);
+    racket.rotation.z = lerp(from.racketR.z, racket.rotation.z, e);
+    keepRacketClear();
+  }
+
+  // Public adapters so the serve controller can still read a left-hand world pos
+  // and so existing joints.racket writes don't crash. Rotations are driven by clips.
+  const armL = { rotation: leftArm ? leftArm.rotation : new THREE.Euler(), position: leftArm ? leftArm.position : new THREE.Vector3(), bone: leftArm };
+  const armR = { rotation: rightArm ? rightArm.rotation : new THREE.Euler(), position: rightArm ? rightArm.position : new THREE.Vector3(), bone: rightArm };
 
   // --- state ---
   const vel = new THREE.Vector3();
@@ -597,75 +1024,12 @@ export function createPlayer(s, opts = {}) {
   function splitStep() { splitT = 0.25; }
   function swing() {
     if (stroke) return;
-    // Auto-select: ball on the non-racket side -> backhand.
-    // Mirrored by faceDir so it works for the AI (faceDir +1) too.
     playStroke(notedDX * faceDir > 0.3 ? 'backhand' : 'forehand');
-  }
-
-  // Forehand (right-handed, local space, facing -z): unit turn -> loop -> whip -> wiper.
-  // Contact happens IN FRONT of the body (local z ~-0.45), head locked on the ball.
-  function poseForehand(k, bobY, hop) {
-    const T = STROKE_TIMING, D = T.prep + T.loop + T.swing + T.follow;
-    const K1 = T.prep / D, K2 = (T.prep + T.loop) / D, K3 = (T.prep + T.loop + T.swing) / D;
-    let yaw, aRx, aRz, aLx, aLz, crouch;
-    if (k < K1) { const e = easeInOutCubic(k / K1); // PREP: unit turn, racket back-down, left arm points
-      yaw = lerp(0, 0.5, e); aRx = lerp(-0.65, 0.6, e); aRz = lerp(-0.25, -0.3, e);
-      aLx = lerp(-0.2, -1.2, e); aLz = lerp(0.18, 0.15, e); crouch = -0.05 * e;
-      racket.rotation.x = lerp(-0.25, -0.35, e); // early drop starts in prep
-    } else if (k < K2) { const e = easeInOutCubic((k - K1) / (K2 - K1)); // LOOP: racket drops behind
-      yaw = 0.5; aRx = lerp(0.6, 1.1, e); aRz = lerp(-0.3, -0.5, e);
-      aLx = -1.2; aLz = 0.15; crouch = -0.05;
-      racket.rotation.x = lerp(-0.35, -0.55, e); // wrist lag: head drops below ball
-    } else if (k < K3) { // SWING: hips fire FIRST (ease-out), arm whips delayed (ease-in)
-      const ke = (k - K2) / (K3 - K2);
-      const yawE = easeOutCubic(Math.min(1, ke * 1.4));
-      const armE = easeInCubic(Math.max(0, (ke - 0.25) / 0.75));
-      yaw = lerp(0.5, -0.4, yawE); aRx = lerp(1.1, -0.9, armE); aRz = lerp(-0.5, -0.2, armE);
-      aLx = lerp(-1.2, -0.2, armE); aLz = lerp(0.15, 0.2, armE); crouch = -0.05 * (1 - armE);
-      racket.rotation.x = lerp(-0.55, -0.1, armE);
-    } else { const e = easeInOutCubic((k - K3) / (1 - K3)); // FOLLOW: windshield-wiper finish
-      yaw = lerp(-0.4, 0, e); aRx = lerp(-0.9, -1.8, e); aRz = lerp(-0.2, 0.9, e);
-      aLx = lerp(-0.2, 0, e); aLz = lerp(0.2, 0.18, e); crouch = 0;
-      racket.rotation.x = lerp(-0.1, -0.25, e);
-    }
-    root.rotation.y = yaw;
-    armR.rotation.set(aRx, 0, aRz);
-    armL.rotation.set(aLx, 0, aLz);
-    root.position.y = bobY + crouch + hop;
-  }
-
-  // Backhand, two-handed (chibi): both fists meet on the handle, closed stance,
-  // shoulders turn the other way, finish wraps over the RIGHT shoulder.
-  function poseBackhand(k, bobY, hop) {
-    const T = STROKE_TIMING, D = T.prep + T.loop + T.swing + T.follow;
-    const K1 = T.prep / D, K2 = (T.prep + T.loop) / D, K3 = (T.prep + T.loop + T.swing) / D;
-    let yaw, aRx, aRz, aLx, aLz, crouch;
-    if (k < K1) { const e = easeInOutCubic(k / K1); // PREP: closed stance, both arms to the left
-      yaw = lerp(0, -0.55, e); aRx = lerp(-0.65, 0.5, e); aRz = lerp(-0.25, 0.6, e);
-      aLx = lerp(-0.2, 0.45, e); aLz = lerp(0.18, 0.55, e); crouch = -0.05 * e;
-      racket.rotation.x = lerp(-0.25, -0.4, e);
-    } else if (k < K2) { const e = easeInOutCubic((k - K1) / (K2 - K1)); // LOOP: fists together, deeper coil
-      yaw = -0.55; aRx = lerp(0.5, 0.7, e); aRz = 0.6;
-      aLx = lerp(0.45, 0.6, e); aLz = 0.55; crouch = lerp(-0.05, -0.07, e);
-      racket.rotation.x = -0.4;
-    } else if (k < K3) { const e = easeInCubic((k - K2) / (K3 - K2)); // SWING: uncoil, push through together
-      yaw = lerp(-0.55, 0.45, e); aRx = lerp(0.7, -1.2, e); aRz = lerp(0.6, -0.3, e);
-      aLx = lerp(0.6, -1.1, e); aLz = lerp(0.55, 0.3, e); crouch = -0.07 * (1 - e);
-      racket.rotation.x = lerp(-0.4, -0.1, e);
-    } else { const e = easeInOutCubic((k - K3) / (1 - K3)); // FOLLOW: wrap over right shoulder
-      yaw = lerp(0.45, 0, e); aRx = lerp(-1.2, -2.2, e); aRz = lerp(-0.3, -0.7, e);
-      aLx = lerp(-1.1, -2.0, e); aLz = lerp(0.3, -0.5, e); crouch = 0;
-      racket.rotation.x = lerp(-0.1, -0.25, e);
-    }
-    root.rotation.y = yaw;
-    armR.rotation.set(aRx, 0, aRz);
-    armL.rotation.set(aLx, 0, aLz);
-    root.position.y = bobY + crouch + hop;
   }
 
   function update(dt, ext) {
     time += dt;
-    const mv = ext || input; // AI passes virtual {x,z}, player uses global keyboard input
+    const mv = ext || input;
     target.set(mv.x * maxSp, 0, mv.z * maxSp);
     vel.lerp(target, Math.min(1, dt * PLAYER.accelLerp));
     group.position.x += vel.x * dt;
@@ -676,63 +1040,39 @@ export function createPlayer(s, opts = {}) {
     const speed = Math.hypot(vel.x, vel.z);
     const intensity = THREE.MathUtils.clamp(speed / PLAYER.maxSpeed, 0, 1);
     walkCycle += dt * (3 + speed * 1.9);
-
-    // Base body-bob (stroke poses reuse it so the run cycle never pops)
-    const bob0 = Math.abs(Math.sin(walkCycle * 2.4)) * 0.085 * intensity + Math.sin(time * 2.5) * 0.018;
-
-    // Split-step hop timer (receiver reacts to the opponent's hit)
+    const bob0 = Math.abs(Math.sin(walkCycle * 2.4)) * 0.07 * intensity + Math.sin(time * 2.5) * 0.014;
     if (splitT > 0) splitT = Math.max(0, splitT - dt);
     const splitHop0 = splitT > 0 ? Math.sin((0.25 - splitT) / 0.25 * Math.PI) * 0.08 : 0;
+    const breathe = 1 + Math.sin(time * 3) * 0.02 * (1 - intensity * 0.5);
 
-    // Legs: cute waddle (+ wide split-step stance while hopping)
-    const legAmp = 0.75 * intensity;
-    legL.rotation.x = Math.sin(walkCycle * 2.4) * legAmp;
-    legR.rotation.x = -Math.sin(walkCycle * 2.4) * legAmp;
-    legL.rotation.z = splitT > 0 ? 0.2 : 0.06;
-    legR.rotation.z = splitT > 0 ? -0.2 : -0.06;
+    group.rotation.y = baseYaw + THREE.MathUtils.clamp(vel.x * 0.045, -0.35, 0.35);
 
-    // Arms
-    const armAmp = 0.55 * intensity;
-    armL.rotation.x = -Math.sin(walkCycle * 2.4) * armAmp - intensity * 0.25;
-    armL.rotation.z = 0.18 + Math.sin(time * 2) * 0.03;
+    if (ext && ext.skipPose) return false;
 
     if (stroke) {
-      // Groundstroke: keyframed forehand/backhand (~0.47s), legs keep running underneath
       stroke.t += dt;
       strokeK = Math.min(1, stroke.t / stroke.dur);
-      if (stroke.type === 'backhand') poseBackhand(strokeK, bob0, splitHop0);
-      else poseForehand(strokeK, bob0, splitHop0);
+      applyTennisPose(stroke.type, strokeK, {
+        bob: bob0, hop: splitHop0, time, intensity, breathe, vx: vel.x, walk: walkCycle
+      });
       if (strokeK >= 1) stroke = null;
     } else {
-      armR.rotation.x = -0.65 - Math.sin(walkCycle * 2.4) * armAmp * 0.6 + Math.sin(time * 2.2) * 0.05;
-      armR.rotation.z = -0.25 - intensity * 0.1;
-      root.rotation.y = THREE.MathUtils.lerp(root.rotation.y, 0, Math.min(1, dt * 8));
+      applyTennisPose(intensity > 0.08 ? 'run' : 'idle', 0, {
+        bob: bob0, hop: splitHop0, time, intensity, breathe, vx: vel.x,
+        walk: walkCycle, split: splitT > 0
+      });
     }
-
-    // Body bob + split hop (süß) – skipped while a stroke owns the pose (poses add splitHop0)
-    if (!stroke) root.position.y = bob0 + splitHop0;
-    root.rotation.x = -faceDir * intensity * 0.14;
-    root.rotation.z = THREE.MathUtils.clamp(-vel.x * 0.02, -0.12, 0.12);
-    torso.scale.y = 1 + Math.sin(time * 3) * 0.02 * (1 - intensity * 0.5);
-
-    // Head watches the contact point during the swing (locked until follow-through)
-    if (!stroke || strokeK > 0.75) {
-      headGroup.rotation.z = Math.sin(walkCycle * 1.2) * 0.07 * (0.3 + intensity) + THREE.MathUtils.clamp(-vel.x * 0.012, -0.1, 0.1);
-      headGroup.rotation.x = intensity * 0.08 + Math.sin(time * 1.8) * 0.03;
-    }
-    headGroup.position.y = 1.32 + Math.sin(time * 2.5 + 1) * 0.012;
-
-    // Face forward + slight steer into strafe
-    group.rotation.y = baseYaw + THREE.MathUtils.clamp(vel.x * 0.045, -0.35, 0.35);
 
     let startedSwing = false;
     if (!ext && input.swingPressed) { input.swingPressed = false; swing(); startedSwing = true; }
     return startedSwing;
   }
 
-  return { group, root, update, swing, playStroke, noteBall, splitStep, velocity: vel,
-    // Exposed for serve/mode animation controllers (read-only use: set rotations after update())
-    joints: { root, torso, head: headGroup, armL, armR, legL, legR, racket, fistL, fistR } };
+  return {
+    group, root, update, swing, playStroke, noteBall, splitStep, velocity: vel,
+    applyTennisPose, captureRig, blendRig, keepRacketClear, sampleRacketClearance,
+    joints: { root, torso, head: headGroup, armL, armR, legL, legR, racket, fistL, fistR }
+  };
 }
 
 // ============================================================
@@ -993,11 +1333,6 @@ const SERVE_TOSS_V0 = 7.0;   // toss up-speed -> apex ~2.0m from ~0.65m hand (ch
 // Racket head reaches ~1.9m overhead, so apex ~2.0m keeps the gap <= 0.15m.
 const SERVE_BOX = { xMax: 4.115, zServe: 6.4 }; // singles box limits
 
-function easeInOutCubic(k) { k = THREE.MathUtils.clamp(k, 0, 1); return k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2; }
-function easeOutCubic(k) { k = THREE.MathUtils.clamp(k, 0, 1); return 1 - Math.pow(1 - k, 3); }
-function easeInCubic(k) { k = THREE.MathUtils.clamp(k, 0, 1); return k * k * k; }
-const lerp = THREE.MathUtils.lerp;
-
 function makeFlashTexture() {
   const c = document.createElement('canvas');
   c.width = c.height = 128;
@@ -1076,32 +1411,12 @@ export function createServeController(pl, bl, s) {
   }
 
   // ---- pop-free blending: capture current pose, ease into serve poses ----
-  function capturePose() {
-    return {
-      rootY: J.root.position.y, rootRX: J.root.rotation.x, rootRY: J.root.rotation.y,
-      aLx: J.armL.rotation.x, aLz: J.armL.rotation.z,
-      aRx: J.armR.rotation.x, aRz: J.armR.rotation.z,
-      lLx: J.legL.rotation.x, lRx: J.legR.rotation.x, hX: J.head.rotation.x,
-      rX: J.racket.rotation.x, rZ: J.racket.rotation.z
-    };
-  }
+  function capturePose() { return pl.captureRig(); }
   function startBlend() { blendFrom = capturePose(); blendT = 0; }
   function applyBlend(dt, dur) {
     if (!blendFrom) return;
     blendT = Math.min(1, blendT + dt / (dur || 0.18));
-    const e = easeOutCubic(blendT), f = blendFrom;
-    J.root.position.y = lerp(f.rootY, J.root.position.y, e);
-    J.root.rotation.x = lerp(f.rootRX, J.root.rotation.x, e);
-    J.root.rotation.y = lerp(f.rootRY, J.root.rotation.y, e);
-    J.armL.rotation.x = lerp(f.aLx, J.armL.rotation.x, e);
-    J.armL.rotation.z = lerp(f.aLz, J.armL.rotation.z, e);
-    J.armR.rotation.x = lerp(f.aRx, J.armR.rotation.x, e);
-    J.armR.rotation.z = lerp(f.aRz, J.armR.rotation.z, e);
-    J.legL.rotation.x = lerp(f.lLx, J.legL.rotation.x, e);
-    J.legR.rotation.x = lerp(f.lRx, J.legR.rotation.x, e);
-    J.head.rotation.x = lerp(f.hX, J.head.rotation.x, e);
-    J.racket.rotation.x = lerp(f.rX, J.racket.rotation.x, e);
-    J.racket.rotation.z = lerp(f.rZ, J.racket.rotation.z, e);
+    pl.blendRig(blendFrom, easeOutCubic(blendT));
     if (blendT >= 1) blendFrom = null;
   }
 
@@ -1261,66 +1576,22 @@ export function createServeController(pl, bl, s) {
 
   let onGoodServe = null;
 
-  // ---- keyframed poses (all eased, no pops) ----
-  function poseReady() {
-    J.legL.rotation.set(0.38, 0, 0.06);
-    J.legR.rotation.set(-0.38, 0, -0.06);
-    J.root.position.y = -0.06;
-    J.root.rotation.set(0, 0.4, 0); // side-on stance
-    J.armL.rotation.set(-0.35, 0, 0.15); // ball hand forward
-    J.armR.rotation.set(0.35, 0, -0.2);  // racket down
-    J.racket.rotation.set(-0.25, 0, -0.12); // neutral grip (reset after strokes)
-    J.head.rotation.set(0.02, 0, 0);
-    J.torso.scale.y = 1;
+  // ---- keyframed poses (driven by the mascot tennis clips; racket stays outboard) ----
+  function poseReady(rock) {
+    pl.applyTennisPose('serveReady', 0, { rock: rock ?? 0 });
   }
 
   function poseToss(kUp, kTrophy) {
-    // kUp: toss arm 0->1 (ease-out), kTrophy: coil + racket-back 0->1 near apex
-    J.legL.rotation.set(lerp(0.38, 0.62, kTrophy), 0, 0.06);
-    J.legR.rotation.set(lerp(-0.38, -0.62, kTrophy), 0, -0.06);
-    J.root.position.y = lerp(-0.06, -0.13, kTrophy); // deep coil (reads from follow-cam)
-    J.root.rotation.set(lerp(0, -0.10, kTrophy), lerp(0.4, 0.7, kTrophy), 0); // arch back
-    J.armL.rotation.set(lerp(-0.35, -2.9, kUp), 0, lerp(0.15, 0.05, kUp)); // toss arm straight up (held till strike)
-    J.armR.rotation.set(lerp(0.35, -2.6, kTrophy), 0, lerp(-0.2, 1.0, kTrophy)); // elbow HIGH, racket behind back
-    J.racket.rotation.set(lerp(-0.25, 0.5, kTrophy), 0, -0.12); // head points DOWN behind back
-    J.head.rotation.set(lerp(0.02, 0.35, kUp), 0, Math.sin(kUp * 9) * 0.02); // look up at ball
-    J.head.position.y = 1.32;
+    pl.applyTennisPose('serveToss', 0, { kUp, kTrophy });
   }
 
   function poseStrike(k) {
-    // k: 0..1 explosive whip OVER THE TOP: -2.6 (back) -> -4.0 (down-forward).
-    // (Rotation.x=-PI is straight up; continuing past it brings the head down in FRONT.)
-    const w = easeInCubic(k);
-    J.root.position.y = lerp(-0.13, 0.14, w); // jump extension
-    J.legL.rotation.set(lerp(0.62, 0.05, w), 0, 0.06);
-    J.legR.rotation.set(lerp(-0.62, -0.05, w), 0, -0.06);
-    J.root.rotation.set(lerp(-0.10, 0.05, w), lerp(0.7, -0.5, w), 0); // torso uncoil whip
-    // Tossing arm stays UP through the trophy, then pulls down (real sequencing)
-    const aLk = w < 0.4 ? -2.9 : lerp(-2.9, -0.9, (w - 0.4) / 0.6);
-    J.armL.rotation.set(aLk, 0, lerp(0.05, 0.1, w)); // matches toss-end aLz 0.05, no pop
-    J.armR.rotation.set(lerp(-2.6, -4.0, w), 0, lerp(1.0, -0.15, w)); // overhead whip to front
-    // Pronation snap during the 80ms impact freeze (racket face turns over at contact)
-    let rZ;
-    if (freezeT > 0) rZ = lerp(-0.12, 0.4, easeOutCubic(1 - freezeT / SERVE_TIMING.freeze));
-    else rZ = lerp(0.4, -0.15, w); // freeze-end 0.4 == whip value, continuous
-    J.racket.rotation.set(lerp(0.5, -0.2, w), 0, rZ);
-    J.head.rotation.set(lerp(0.35, 0.1, w), 0, 0);
+    const freeze = freezeT > 0 ? freezeT / SERVE_TIMING.freeze : 0;
+    pl.applyTennisPose('serveStrike', k, { freeze });
   }
 
   function poseFollow(k, happy) {
-    // k: 0..1 follow-through + recover, continues from strike end (-4.0)
-    const e = easeInOutCubic(k);
-    const hop = happy ? Math.abs(Math.sin(k * Math.PI * 2)) * 0.09 * (1 - k * 0.5) : 0;
-    J.root.position.y = lerp(0.14, 0, e) + hop; // land (+ happy hops)
-    // Front foot lands INSIDE the court, then recovers (visual only: group stays legal)
-    J.root.position.z = -0.4 * Math.sin(e * Math.PI);
-    J.legL.rotation.set(lerp(0.05, 0.5, e), 0, 0.06);
-    J.legR.rotation.set(lerp(-0.05, -0.6, e), 0, -0.06); // deep front-foot landing stagger
-    J.root.rotation.set(lerp(0.05, 0, e), lerp(-0.5, 0, e), 0);
-    J.armL.rotation.set(lerp(-0.9, 0, e), 0, lerp(0.1, 0.18, e));
-    J.armR.rotation.set(lerp(-4.0, -5.5, e), 0, lerp(-0.15, 0.9, e)); // finish across left hip
-    J.racket.rotation.set(lerp(-0.2, -0.25, e), 0, lerp(-0.15, -0.12, e)); // grip back to neutral
-    J.head.rotation.set(lerp(0.1, 0, e), 0, happy ? Math.sin(k * 12) * 0.09 : 0); // head wobble if good
+    pl.applyTennisPose('serveFollow', k, { happy });
   }
 
   function update(dt) {
@@ -1354,13 +1625,12 @@ export function createServeController(pl, bl, s) {
     if (mode === 'ready') {
       // Free positioning in the whole backfield; a hard wall keeps the court off-limits
       // (slide-along: only z is clamped, x movement is never blocked).
-      pl.update(dt, { x: input.x, z: input.z });
+      pl.update(dt, { x: input.x, z: input.z, skipPose: true });
       clampServeBox();
       // Rocking motion (real pre-serve rhythm): weight shifts front-back twice, then settles
       rockT += dt;
       const rock = rockT < 1.2 ? Math.sin((rockT / 1.2) * Math.PI * 4) * 0.06 * (1 - rockT / 1.2) : 0;
-      poseReady();
-      J.root.position.z = rock;
+      poseReady(rock);
       wallFeedback(dt); // shake + hint when pushing into the wall
       applyBlend(dt, 0.18); // ease rally pose -> serve crouch
       handWorld(tmpV);
@@ -1373,7 +1643,7 @@ export function createServeController(pl, bl, s) {
     // strike / follow: feet planted + wall holds (kills residual drift from the run-up).
     // (Toss windup moves via its own branch below.)
     if (mode !== 'toss') {
-      pl.update(dt, { x: 0, z: 0 });
+      pl.update(dt, { x: 0, z: 0, skipPose: true });
       clampServeBox(); // no drift under the wall or across the center line
       J.root.position.z *= Math.max(0, 1 - dt * 6); // decay any ready-rock leftover smoothly
     }
@@ -1383,7 +1653,7 @@ export function createServeController(pl, bl, s) {
       const windup = SERVE_TIMING.windup;
       if (!released) {
         // Windup: free backfield movement (same walls), arm rises with ball in hand
-        pl.update(dt, { x: input.x, z: input.z });
+        pl.update(dt, { x: input.x, z: input.z, skipPose: true });
         clampServeBox();
         wallFeedback(dt);
         const kUp = 0.45 * easeOutCubic(tPhase / windup);
@@ -1404,7 +1674,7 @@ export function createServeController(pl, bl, s) {
         return;
       }
       const tf = tPhase - windup;
-      pl.update(dt, { x: 0, z: 0 }); // feet planted from release on
+      pl.update(dt, { x: 0, z: 0, skipPose: true }); // feet planted from release on
       clampServeBox(); // no drift under the wall or across the center line
       // Manual toss ballistics (main loop skips ball.update while held)
       tossVel += BALL.gravity * dt;
@@ -1470,12 +1740,22 @@ export function createServeController(pl, bl, s) {
 }
 
 createTennisCourt(scene);
+try {
+  mascotGltf = await new GLTFLoader().loadAsync(MASCOT_URL);
+} catch (err) {
+  const el = document.getElementById('loading');
+  if (el) el.textContent = 'Rig konnte nicht geladen werden: ' + (err && err.message ? err.message : err);
+  throw err;
+}
+const loadingEl = document.getElementById('loading');
+if (loadingEl) loadingEl.remove();
 const player = createPlayer(scene);
 const opponent = createPlayer(scene, {
   name: 'opponent', faceDir: 1, shirtColor: 0x2a9dca, speed: AI.speed,
   spawn: new THREE.Vector3(0, 0, -13.8),
   bounds: { minX: -9, maxX: 9, minZ: -17, maxZ: -0.5 }
 });
+if (PROBE) window.__museTennis = { player, opponent };
 const ball = createBall(scene);
 const ai = createOpponentAI(opponent, ball);
 const serve = createServeController(player, ball, scene);
