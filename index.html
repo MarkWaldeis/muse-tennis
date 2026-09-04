@@ -95,8 +95,9 @@
     white-space: normal; text-align: center; max-width: min(72vw, 340px);
   }
   html.touch-ui #status {
-    top: calc(8px + var(--safe-t)); right: calc(8px + var(--safe-r)); bottom: auto;
-    font-size: 11px; max-width: 28vw; padding: 6px 8px;
+    top: calc(44px + var(--safe-t)); left: 50%; right: auto; transform: translateX(-50%);
+    bottom: auto; font-size: 11px; max-width: min(90vw, 420px); padding: 6px 8px;
+    text-align: center; white-space: normal;
   }
   html.touch-ui #camBtn, html.touch-ui #resetBtn {
     top: calc(8px + var(--safe-t)); bottom: auto; font-size: 12px; padding: 7px 10px;
@@ -2102,14 +2103,19 @@ function syncOrbit() {
 }
 function setFollow(v) {
   followCam = v;
-  if (camBtn) camBtn.textContent = followCam ? '📷 Follow-Cam: AN' : '📷 Follow-Cam: AUS';
+  if (camBtn) {
+    const touch = document.documentElement.classList.contains('touch-ui');
+    camBtn.textContent = followCam
+      ? (touch ? '📷 Cam' : '📷 Follow-Cam: AN')
+      : (touch ? '📷 Orbit' : '📷 Follow-Cam: AUS');
+  }
   syncOrbit();
 }
 if (camBtn) camBtn.addEventListener('click', () => setFollow(!followCam));
 window.addEventListener('keydown', (e) => {
   if (e.key.toLowerCase() === 'c') setFollow(!followCam);
 });
-syncOrbit();
+setFollow(followCam);
 const followOffset = new THREE.Vector3(0, 6.8, 10.0);
 const followLook = new THREE.Vector3(0, 1.0, -3.0); // preallocated (no per-frame alloc)
 const desiredCam = new THREE.Vector3();
@@ -2118,7 +2124,7 @@ const desiredTarget = new THREE.Vector3();
 // ---------- Resize + Loop ----------
 function resizeView() {
   applyTouchClass();
-  syncOrbit();
+  setFollow(followCam);
   const w = window.innerWidth;
   const h = Math.max(1, window.innerHeight);
   camera.aspect = w / h;
