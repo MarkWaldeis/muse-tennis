@@ -1498,7 +1498,13 @@ export function createServeController(pl, bl, s) {
 }
 
 createTennisCourt(scene);
-mascotGltf = await new GLTFLoader().loadAsync(MASCOT_URL);
+try {
+  mascotGltf = await new GLTFLoader().loadAsync(MASCOT_URL);
+} catch (err) {
+  const el = document.getElementById('loading');
+  if (el) el.textContent = 'Rig konnte nicht geladen werden: ' + (err && err.message ? err.message : err);
+  throw err;
+}
 const loadingEl = document.getElementById('loading');
 if (loadingEl) loadingEl.remove();
 const player = createPlayer(scene);

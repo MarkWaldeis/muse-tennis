@@ -190,12 +190,12 @@ def fit_skeleton(pos: np.ndarray) -> list[Bone]:
     spine1 = lerp_v(hips, chest, 0.72)
     spine2 = chest.copy()
 
-    add("mixamorig:Hips", None, hips, spine, 0.09)
-    add("mixamorig:Spine", "mixamorig:Hips", spine, spine1, 0.09)
-    add("mixamorig:Spine1", "mixamorig:Spine", spine1, spine2, 0.085)
-    add("mixamorig:Spine2", "mixamorig:Spine1", spine2, neck, 0.08)
-    add("mixamorig:Neck", "mixamorig:Spine2", neck, lerp_v(neck, head_c, 0.55), 0.055)
-    add("mixamorig:Head", "mixamorig:Neck", lerp_v(neck, head_c, 0.55), head_c, 0.09)
+    add("mixamorig:Hips", None, hips, spine, 0.06)
+    add("mixamorig:Spine", "mixamorig:Hips", spine, spine1, 0.07)
+    add("mixamorig:Spine1", "mixamorig:Spine", spine1, spine2, 0.07)
+    add("mixamorig:Spine2", "mixamorig:Spine1", spine2, neck, 0.06)
+    add("mixamorig:Neck", "mixamorig:Spine2", neck, lerp_v(neck, head_c, 0.55), 0.05)
+    add("mixamorig:Head", "mixamorig:Neck", lerp_v(neck, head_c, 0.55), head_c, 0.07)
     add("mixamorig:HeadTop_End", "mixamorig:Head", head_c, head_top, 0.03, deform=False)
     add("mixamorig:Head_Beak", "mixamorig:Head", head_c, beak, 0.025)
 
@@ -461,11 +461,21 @@ def compute_weights(pos: np.ndarray, idx: np.ndarray, bones: list[Bone]) -> tupl
         if "Right" in b.name and "Tail" not in b.name:
             cost = np.where(pos[:, 0] < -0.04, cost + 8.0, cost)
         if b.name.startswith("mixamorig:Tail"):
-            # tail owns the rear volume
-            cost = np.where(pos[:, 2] > 0.05, cost + 3.5, cost)
-        if "Hand" in b.name or "Toe_" in b.name or "Crest" in b.name or "Beak" in b.name:
-            # tiny bones: hard falloff
-            cost = cost * 1.15 + np.maximum(0.0, eucl - b.radius * 3.0) * 12.0
+            # Tail bones WIN on the rear (+Z) volume, lose on the body.
+            cost = np.where(pos[:, 2] > 0.04, cost * 0.22, cost + 6.0)
+        if b.name in ("mixamorig:Hips", "mixamorig:Spine", "mixamorig:Spine1", "mixamorig:Spine2"):
+            cost = np.where(pos[:, 2] > 0.06, cost + 5.5, cost)
+            cost = np.where(np.abs(pos[:, 0]) > 0.30, cost + 4.0, cost)
+            cost = np.where(pos[:, 1] > 0.72, cost + 3.5, cost)
+        if "Hand" in b.name and b.name.split("Hand")[-1] != "":
+            # Finger phalanges: strong near the feather, weak elsewhere
+            cost = np.where(eucl < max(0.05, b.radius * 8.0), cost * 0.18, cost + 5.0)
+        elif b.name.endswith("Hand"):
+            cost = np.where(eucl < 0.08, cost * 0.55, cost)
+        if "Toe_" in b.name or b.name.endswith("ToeBase"):
+            cost = np.where(eucl < 0.06, cost * 0.2, cost + 3.0)
+        if "Crest" in b.name or "Beak" in b.name:
+            cost = np.where(eucl < 0.08, cost * 0.3, cost + 2.0)
         consider(name_to_i[b.name], cost)
         print(f"    {b.name:32s} seeds={len(seeds):4d} r={b.radius:.3f}")
 
