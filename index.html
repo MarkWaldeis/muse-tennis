@@ -443,9 +443,19 @@ function curlFingers(bones, tag, amount) {
   }
 }
 
+// TEMP watch-mode: both birds only hit forehand, looping cross-court rally.
+// Delete DEMO_FH_RALLY + every `if (DEMO_FH_RALLY)` block after viewing.
+const DEMO_FH_RALLY = true;
+
 // Groundstroke keyframe durations (s); forehand/backhand total ~0.47s
 // Phases: PREP (unit turn) -> LOOP (take-back) -> SWING (explosive) -> FOLLOW (recover)
 export const STROKE_TIMING = { prep: 0.12, loop: 0.10, swing: 0.10, follow: 0.15 };
+if (DEMO_FH_RALLY) {
+  STROKE_TIMING.prep = 0.28;
+  STROKE_TIMING.loop = 0.22;
+  STROKE_TIMING.swing = 0.24;
+  STROKE_TIMING.follow = 0.40;
+}
 
 // Keyboard input (WASD + arrows + Space + C)
 export const input = { x: 0, z: 0, swingPressed: false };
@@ -1024,6 +1034,7 @@ export function createPlayer(s, opts = {}) {
   function splitStep() { splitT = 0.25; }
   function swing() {
     if (stroke) return;
+    if (DEMO_FH_RALLY) { playStroke('forehand'); return; }
     playStroke(notedDX * faceDir > 0.3 ? 'backhand' : 'forehand');
   }
 
@@ -1259,6 +1270,10 @@ export function createOpponentAI(opp, ball) {
   }
 
   function pickTarget() {
+    if (DEMO_FH_RALLY) {
+      // Always into the human's forehand (world +X, player's right).
+      return new THREE.Vector3(3.6 + (Math.random() - 0.5) * 0.4, BALL.radius, 10.4 + Math.random() * 0.6);
+    }
     // Corners on player side, small error can cause outs (fun + TODO scoring)
     const cornerX = (Math.random() < 0.5 ? -1 : 1) * (2.2 + Math.random() * 2.4);
     return new THREE.Vector3(
@@ -1282,6 +1297,9 @@ export function createOpponentAI(opp, ball) {
     }
     tx = THREE.MathUtils.clamp(tx, -9, 9);
     tz = THREE.MathUtils.clamp(tz, -17, -0.5);
+    if (DEMO_FH_RALLY) {
+      tx = Math.min(tx, -2.4); // stay on the AI's forehand wing (world -X)
+    }
     aiInput.x = THREE.MathUtils.clamp((tx - op.x) * 0.9, -1, 1);
     aiInput.z = THREE.MathUtils.clamp((tz - op.z) * 0.9, -1, 1);
     const l = Math.hypot(aiInput.x, aiInput.z);
@@ -1290,11 +1308,11 @@ export function createOpponentAI(opp, ball) {
 
     // Hit when close, low enough, on our side
     const dist = Math.hypot(bp.x - op.x, bp.z - op.z);
-    if (cooldown <= 0 && bp.z < 0.4 && bp.y < 2.4 && dist < AI.reach) {
+    if (cooldown <= 0 && bp.z < 0.4 && bp.y < 2.4 && dist < (DEMO_FH_RALLY ? 2.8 : AI.reach)) {
       opp.noteBall(bp.x - op.x); // refresh side AFTER the run-up: correct forehand/backhand pick
       opp.swing();
       ball.hitter = 'ai';
-      ball.hit(bp.clone(), pickTarget(), 0.9 + Math.random() * 0.25);
+      ball.hit(bp.clone(), pickTarget(), DEMO_FH_RALLY ? 1.25 : 0.9 + Math.random() * 0.25);
       cooldown = AI.hitCooldown;
       return true;
     }
@@ -1830,6 +1848,9 @@ serve.setHooks({
 // Player aim: direction keys shape the shot, default deep cross-court
 function playerAimTarget() {
   const p = player.group.position;
+  if (DEMO_FH_RALLY) {
+    return new THREE.Vector3(-3.6 + (Math.random() - 0.5) * 0.4, BALL.radius, -10.4 - Math.random() * 0.6);
+  }
   const x = THREE.MathUtils.clamp(p.x * 0.35 + input.x * 5.0 + (Math.random() - 0.5) * 1.4, -5.2, 5.2);
   const z = THREE.MathUtils.clamp(-8.5 - input.z * 1.5 + (Math.random() - 0.5) * 1.0, -11.6, -6.0);
   return new THREE.Vector3(x, BALL.radius, z);
@@ -1839,9 +1860,9 @@ function tryPlayerHit() {
   const bp = ball.mesh.position;
   const pp = player.group.position;
   const d = Math.hypot(bp.x - pp.x, bp.z - pp.z);
-  if (bp.z > -0.6 && bp.y < 2.6 && d < 2.4) {
+  if (bp.z > -0.6 && bp.y < 2.6 && d < (DEMO_FH_RALLY ? 2.8 : 2.4)) {
     ball.hitter = 'player';
-    ball.hit(bp.clone(), playerAimTarget(), 0.95);
+    ball.hit(bp.clone(), playerAimTarget(), DEMO_FH_RALLY ? 1.25 : 0.95);
     serve.onRallyHit(); // serve watch off: live rally now
     rallyHits++;
     refreshStatus();
@@ -1851,6 +1872,7 @@ function tryPlayerHit() {
 }
 
 function resetRally(msg, winner) {
+  if (DEMO_FH_RALLY) { startForehandRally(msg); return; }
   // Rally point over: awarded points run the score (side toggles),
   // neutral endings (no hitter, e.g. lost ball) just re-serve without a point.
   if (winner) { awardPoint(winner, msg); return; }
@@ -1860,6 +1882,7 @@ function resetRally(msg, winner) {
 }
 
 function safetyReset() {
+  if (DEMO_FH_RALLY) { startForehandRally(); return; }
   // Neutral reset (dead ball / R key): no point counted
   rallyHits = 0;
   deadTimer = 0;
@@ -1870,7 +1893,9 @@ window.addEventListener('keydown', (e) => {
   if (e.key.toLowerCase() === 'r') safetyReset();
 });
 
-serve.enterReady('1. Aufschlag – hinter die Grundlinie, SPACE = hochwerfen');
+if (!DEMO_FH_RALLY) {
+  serve.enterReady('1. Aufschlag – hinter die Grundlinie, SPACE = hochwerfen');
+}
 updateScoreboard();
 
 // Follow-Cam (toggle with C / Button), Orbit bleibt aktiv
@@ -1889,6 +1914,32 @@ const followLook = new THREE.Vector3(0, 1.0, -3.0); // preallocated (no per-fram
 const desiredCam = new THREE.Vector3();
 const desiredTarget = new THREE.Vector3();
 
+let demoPlayerCool = 0;
+function startForehandRally(msg) {
+  // TEMP: looping cross-court forehands. Delete with DEMO_FH_RALLY.
+  rallyHits = 0;
+  deadTimer = 0;
+  prevHitter = null;
+  demoPlayerCool = 0.35;
+  player.group.position.set(3.5, 0, 11.0);
+  player.velocity.set(0, 0, 0);
+  opponent.group.position.set(-3.5, 0, -11.0);
+  opponent.velocity.set(0, 0, 0);
+  ball.hitter = 'player';
+  ball.hit(new THREE.Vector3(3.7, 1.05, 10.6), new THREE.Vector3(-3.6, BALL.radius, -10.5), 1.3);
+  player.swing();
+  setFollow(false);
+  camera.position.set(0, 9.8, 22.5);
+  controls.target.set(0, 0.7, 0);
+  controls.update();
+  const info = document.getElementById('info');
+  if (info) {
+    info.innerHTML = '🎾 DEMO: Vorhand vs Vorhand<br>Beide spielen nur Cross-Court-Vorhand • R: neu • C: Cam<br><span style="opacity:.8">Temporär – danach wieder rauslöschen</span>';
+  }
+  setStatus((msg ? msg + ' • ' : '') + 'DEMO Vorhand vs Vorhand');
+}
+if (DEMO_FH_RALLY) startForehandRally();
+
 // ---------- Resize + Loop ----------
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -1906,6 +1957,28 @@ renderer.setAnimationLoop(() => {
 
   if (serve.isActive()) {
     serve.update(dt); // serve owns player animation + ball (ready/toss/strike/follow)
+  } else if (DEMO_FH_RALLY) {
+    demoPlayerCool = Math.max(0, demoPlayerCool - dt);
+    const bp = ball.mesh.position;
+    const px = player.group.position;
+    const wantX = Math.max(2.5, bp.z > -1 ? bp.x + 0.55 : 3.5);
+    const wantZ = (bp.z > 0.2 && ball.velocity.z > 0.3)
+      ? THREE.MathUtils.clamp(bp.z + 0.8, 7.5, 14.5)
+      : 11.0;
+    player.update(dt, {
+      x: THREE.MathUtils.clamp((wantX - px.x) * 0.9, -1, 1),
+      z: THREE.MathUtils.clamp((wantZ - px.z) * 0.9, -1, 1)
+    });
+    if (demoPlayerCool <= 0 && bp.z > 0.5 && ball.velocity.z > 0) {
+      const pp = player.group.position;
+      const d = Math.hypot(bp.x - pp.x, bp.z - pp.z);
+      if (bp.y < 2.6 && d < 2.8) {
+        player.swing();
+        tryPlayerHit();
+        demoPlayerCool = 0.8;
+      }
+    }
+    serve.update(dt);
   } else {
     if (player.update(dt)) tryPlayerHit(); // Space -> swing started -> hit if in reach
     serve.update(dt); // celebration hops + release blend only
