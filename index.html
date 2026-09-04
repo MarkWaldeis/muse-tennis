@@ -60,12 +60,12 @@
     filter: drop-shadow(0 10px 18px rgba(0,0,0,0.42));
   }
   .sb-stone {
-    position: relative; overflow: hidden;
+    position: relative; overflow: hidden; isolation: isolate;
     padding: 12px 18px 16px 14px;
     color: #2a261c;
     background-color: #b4aea2;
     background-image:
-      linear-gradient(165deg, rgba(206,200,188,0.78) 0%, rgba(168,162,149,0.84) 46%, rgba(118,112,100,0.88) 100%),
+      linear-gradient(165deg, rgba(206,200,188,0.9) 0%, rgba(166,160,147,0.92) 46%, rgba(122,116,104,0.94) 100%),
       url('assets/mark-open-scoreboard.jpg');
     background-size: cover;
     background-position: 28% 18%;
@@ -82,7 +82,7 @@
       radial-gradient(80% 50% at 88% 92%, rgba(40,30,18,0.28), transparent 55%);
     mix-blend-mode: multiply; opacity: 0.85;
   }
-  .sb-runes { position: absolute; pointer-events: none; opacity: 0.38; }
+  .sb-runes { position: absolute; pointer-events: none; opacity: 0.38; z-index: 1; }
   .sb-runes-r {
     top: 18%; right: 5px; width: 10px; height: 64%;
     background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='120' viewBox='0 0 10 120'><g fill='none' stroke='%232a261c' stroke-width='0.9'><path d='M2 6h6M5 6v8M2 22l6 4-6 4M2 40h6v6H2M3 56l4 8M2 74h6M5 74v10M2 96l3-6 3 6'/></g></svg>");
@@ -207,6 +207,17 @@
   html.touch-ui #serveUI {
     bottom: calc(148px + var(--safe-b)); width: min(260px, calc(100vw - 180px));
   }
+  @media (max-width: 820px) {
+    #score { width: 220px; }
+    #info { top: calc(162px + var(--safe-t)); max-width: min(220px, calc(100vw - 24px)); }
+    .sb-stone { padding: 8px 14px 12px 10px; }
+    .sb-title { font-size: 11px; letter-spacing: 0.1em; margin-bottom: 4px; padding-bottom: 4px; }
+    .sb-row { min-height: 26px; gap: 6px; }
+    .sb-label { font-size: 10px; }
+    .sb-val { font-size: 13px; min-width: 4.2em; }
+    .sb-ico { width: 24px; height: 24px; }
+    .sb-ico svg { width: 13px; height: 13px; }
+  }
   html.touch-ui #callout { top: 28%; font-size: clamp(22px, 8vw, 40px); }
   @media (max-width: 420px) {
     #joyBase { width: 108px; height: 108px; }
@@ -276,13 +287,13 @@
     <div class="sb-row">
       <span class="sb-ico" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none">
-          <g transform="rotate(-28 12 12)">
-            <rect x="11" y="3" width="2" height="10" rx="1" fill="#5b3a1e"/>
-            <ellipse cx="12" cy="16.5" rx="4.2" ry="5.2" stroke="#f3e6b0" stroke-width="1.5"/>
+          <g transform="translate(12 12) rotate(-38)">
+            <rect x="-1" y="-10" width="2" height="11" rx="1" fill="#5b3a1e"/>
+            <ellipse cx="0" cy="5.2" rx="3.4" ry="4.4" stroke="#f3e6b0" stroke-width="1.6"/>
           </g>
-          <g transform="rotate(28 12 12)">
-            <rect x="11" y="3" width="2" height="10" rx="1" fill="#5b3a1e"/>
-            <ellipse cx="12" cy="16.5" rx="4.2" ry="5.2" stroke="#f3e6b0" stroke-width="1.5"/>
+          <g transform="translate(12 12) rotate(38)">
+            <rect x="-1" y="-10" width="2" height="11" rx="1" fill="#5b3a1e"/>
+            <ellipse cx="0" cy="5.2" rx="3.4" ry="4.4" stroke="#f3e6b0" stroke-width="1.6"/>
           </g>
         </svg>
       </span>
