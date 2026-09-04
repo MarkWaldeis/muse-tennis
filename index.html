@@ -1149,7 +1149,7 @@ export function createPlayer(s, opts = {}) {
           spineY = lerp(-0.62, 0.16, torsoE);
           spine2Y = lerp(-0.2, 0.08, torsoE);
           crouch = lerp(-0.09, -0.02, armE);
-          Rd = lerp(0.52, 0.28, armE); Rf = lerp(-0.2, 0.7, armE); Re = lerp(0.95, 0.38, armE); Rout = lerp(0.32, 0.34, armE);
+          Rd = lerp(0.52, 0.28, armE); Rf = lerp(-0.2, 0.7, armE); Re = lerp(0.95, 0.38, armE); Rout = lerp(0.32, 0.42, armE);
           Ld = lerp(0.48, 0.32, armE); Lf = lerp(-0.7, 0.62, armE); Le = lerp(1.12, 0.4, armE); Lout = lerp(0.28, 0.22, armE);
           rx = lerp(0.32, -0.04, wristE); wz = lerp(0.68, 0.48, wristE); wx = lerp(0.16, 0.02, wristE);
           lLX = lerp(0.55, 0.12, hipE); lRX = lerp(-0.14, -0.46, hipE);
@@ -1161,7 +1161,7 @@ export function createPlayer(s, opts = {}) {
           yaw = lerp(0.32, 0, u); hipY = lerp(0.3, 0, u);
           spineY = lerp(0.16, 0.04, u); spine2Y = lerp(0.08, 0, u);
           crouch = 0;
-          Rd = lerp(0.28, 0.70, u); Rf = lerp(0.7, 0.32, u); Re = lerp(0.38, 0.95, u); Rout = lerp(0.34, 0.28, u);
+          Rd = lerp(0.28, 0.70, u); Rf = lerp(0.7, 0.32, u); Re = lerp(0.38, 0.95, u); Rout = lerp(0.42, 0.28, u);
           Ld = lerp(0.32, 0.66, u); Lf = lerp(0.62, 0.48, u); Le = lerp(0.4, 0.72, u); Lout = lerp(0.22, 0.16, u);
           rx = lerp(-0.04, -0.18, u); wz = lerp(0.48, 1.22, u); wx = lerp(0.02, -0.12, u);
           lLX = lerp(0.12, 0.22, u); lRX = lerp(-0.46, -0.28, u);
@@ -2133,6 +2133,7 @@ if (PROBE) window.__museTennis = { player, opponent };
 const ball = createBall(scene);
 const ai = createOpponentAI(opponent, ball);
 const serve = createServeController(player, ball, scene);
+if (PROBE) Object.assign(window.__museTennis, { serve, camera, scene });
 
 // ---------- Rally: hitting, aim, reset ----------
 // Every point starts with a serve (side toggles via SERVE.points).
