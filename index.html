@@ -12,6 +12,10 @@
     background: rgba(0,0,0,0.45); padding: 8px 12px; border-radius: 8px;
     font-size: 13px; pointer-events: none; line-height: 1.4;
   }
+  #loading {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: #87a8c8; color: white; font-size: 18px; z-index: 20;
+  }
 </style>
 <script type="importmap">
 {
@@ -24,6 +28,7 @@
 </head>
 <body>
 <div id="app"></div>
+<div id="loading">Lade Spieler-Rig…</div>
 <div id="info">🎾 Tennis – Aufschlag & Rally<br>WASD: laufen • Space: Aufschlag/Schlag (Vorhand/Rückhand auto) • R: neu • C: Cam</div>
 <button id="camBtn" style="position:absolute;bottom:14px;left:12px;padding:8px 12px;border-radius:8px;border:none;background:rgba(0,0,0,0.55);color:white;font-size:13px;cursor:pointer;">📷 Follow-Cam: AN</button>
 <div id="status" style="position:absolute;bottom:14px;right:12px;color:white;background:rgba(0,0,0,0.55);padding:8px 12px;border-radius:8px;font-size:13px;pointer-events:none;">Ballwechsel: 0</div>
@@ -39,6 +44,8 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { SkeletonUtils } from 'three/addons/utils/SkeletonUtils.js';
 
 // ============================================================
 // COURT_DIMENSIONS - Single source of truth for later game logic
@@ -362,7 +369,7 @@ export function createTennisCourt(s) {
 }
 
 // ============================================================
-// PLAYER - cute chibi, procedural, no external models
+// PLAYER - rigged Tripo bird mascot (Mixamo skeleton, volumetric weights)
 // API for later game:
 //   const player = createPlayer(scene)
 //   player.group.position -> spawn / reset
@@ -380,6 +387,66 @@ export const PLAYER = {
     shoes: 0xffffff, cap: 0x2a5dca, racket: 0xffd23f
   }
 };
+
+// Rigged Tripo mascot: 1m bind pose, Mixamo joints, volumetric weights.
+const MASCOT_SCALE = 1.65;
+const MASCOT_URL = 'assets/mascot-bird-rigged.glb';
+let mascotGltf = null;
+
+function collectBones(root) {
+  const map = new Map();
+  root.traverse((o) => { if (o.isBone) map.set(o.name, o); });
+  return map;
+}
+function boneByName(bones, name) {
+  return bones.get(name) || bones.get(name.replace('mixamorig:', '')) || null;
+}
+
+// T-pose wings sit along ±X. Existing stroke/serve poses assume hanging arms
+// (pivot at shoulder, bone along -Y). Map chibi euler → Mixamo arm euler.
+function makeArmJoint(bone, side) {
+  const hangZ = side < 0 ? Math.PI / 2 : -Math.PI / 2;
+  const euler = { x: 0, y: 0, z: 0 };
+  function sync() {
+    if (!bone) return;
+    bone.rotation.set(euler.x, euler.y, hangZ + euler.z);
+  }
+  const rotation = {
+    get x() { return euler.x; },
+    set x(v) { euler.x = v; sync(); },
+    get y() { return euler.y; },
+    set y(v) { euler.y = v; sync(); },
+    get z() { return euler.z; },
+    set z(v) { euler.z = v; sync(); },
+    set(x, y, z = 0) { euler.x = x; euler.y = y; euler.z = z; sync(); }
+  };
+  sync();
+  return { rotation, position: bone ? bone.position : new THREE.Vector3(), bone };
+}
+
+function curlFingers(bones, tag, amount) {
+  const side = tag === 'Left' ? -1 : 1;
+  for (const f of ['Thumb', 'Index', 'Middle', 'Ring', 'Pinky']) {
+    const thumb = f === 'Thumb' ? 0.55 : 1;
+    for (let n = 1; n <= 3; n++) {
+      const b = boneByName(bones, `mixamorig:${tag}Hand${f}${n}`);
+      if (b) b.rotation.y = side * amount * thumb * (0.55 + n * 0.28);
+    }
+  }
+}
+
+function poseTail(bones, t, intensity) {
+  const a = Math.sin(t * 4.2) * 0.18 * (0.25 + intensity);
+  const b = Math.sin(t * 5.1 + 0.6) * 0.12 * (0.25 + intensity);
+  const tail = boneByName(bones, 'mixamorig:Tail');
+  const tail1 = boneByName(bones, 'mixamorig:Tail1');
+  const tail2 = boneByName(bones, 'mixamorig:Tail2');
+  const crest = boneByName(bones, 'mixamorig:Head_Crest1');
+  if (tail) tail.rotation.y = a;
+  if (tail1) tail1.rotation.y = a * 0.7;
+  if (tail2) tail2.rotation.x = b;
+  if (crest) crest.rotation.z = Math.sin(t * 3.2) * 0.08;
+}
 
 // Groundstroke keyframe durations (s); forehand/backhand total ~0.47s
 // Phases: PREP (unit turn) -> LOOP (take-back) -> SWING (explosive) -> FOLLOW (recover)
@@ -436,74 +503,68 @@ export function createPlayer(s, opts = {}) {
   root.name = 'playerRoot';
   group.add(root);
 
-  const skinMat = new THREE.MeshStandardMaterial({ color: C.skin, roughness: 0.7 });
-  const shirtMat = new THREE.MeshStandardMaterial({ color: opts.shirtColor ?? C.shirt, roughness: 0.8 });
-  const shortsMat = new THREE.MeshStandardMaterial({ color: C.shorts, roughness: 0.8 });
-  const shoeMat = new THREE.MeshStandardMaterial({ color: C.shoes, roughness: 0.6 });
-  const capMat = new THREE.MeshStandardMaterial({ color: C.cap, roughness: 0.7 });
-
   function shadowed(m) { m.castShadow = true; return m; }
 
-  // Legs (pivot at hip for swing)
-  function makeLeg(side) {
-    const hip = new THREE.Group();
-    hip.position.set(0.14 * side, 0.45, 0);
-    const leg = shadowed(new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.22, 6, 12), skinMat));
-    leg.position.set(0, -0.18, 0);
-    hip.add(leg);
-    const shoe = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.10, 0.28), shoeMat));
-    shoe.position.set(0, -0.38, -0.05); // toe forward (-z, towards net)
-    hip.add(shoe);
-    root.add(hip);
-    return hip;
-  }
-  const legL = makeLeg(-1);
-  const legR = makeLeg(1);
+  const model = SkeletonUtils.clone(mascotGltf.scene);
+  model.name = 'mascot';
+  model.scale.setScalar(MASCOT_SCALE);
+  model.traverse((o) => {
+    if (!o.isMesh) return;
+    o.castShadow = true;
+    o.receiveShadow = true;
+    o.frustumCulled = false;
+    if (opts.shirtColor != null) {
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      const tinted = mats.map((m) => {
+        const c = m.clone();
+        c.color = c.color.clone().lerp(new THREE.Color(opts.shirtColor), 0.4);
+        return c;
+      });
+      o.material = Array.isArray(o.material) ? tinted : tinted[0];
+    }
+  });
+  root.add(model);
 
-  // Shorts + torso
-  const shorts = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.22, 0.26), shortsMat));
-  shorts.position.set(0, 0.52, 0);
-  root.add(shorts);
+  const bones = collectBones(model);
+  const armL = makeArmJoint(boneByName(bones, 'mixamorig:LeftArm'), -1);
+  const armR = makeArmJoint(boneByName(bones, 'mixamorig:RightArm'), 1);
+  const legL = boneByName(bones, 'mixamorig:LeftUpLeg');
+  const legR = boneByName(bones, 'mixamorig:RightUpLeg');
+  const torso = boneByName(bones, 'mixamorig:Spine1') || root;
+  const headGroup = boneByName(bones, 'mixamorig:Head') || root;
+  const leftHand = boneByName(bones, 'mixamorig:LeftHand');
+  const rightHand = boneByName(bones, 'mixamorig:RightHand');
+  const leftFore = boneByName(bones, 'mixamorig:LeftForeArm');
+  const rightFore = boneByName(bones, 'mixamorig:RightForeArm');
 
-  const torso = shadowed(new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.28, 8, 16), shirtMat));
-  torso.position.set(0, 0.82, 0);
-  torso.name = 'playerTorso';
-  root.add(torso);
+  const fistL = {
+    getWorldPosition(out) {
+      group.updateMatrixWorld(true);
+      if (leftHand) return leftHand.getWorldPosition(out);
+      return out.copy(group.position).setY(group.position.y + 0.9);
+    }
+  };
+  const fistR = rightHand || root;
 
-  // Left arm (swings freely)
-  const armL = new THREE.Group();
-  armL.position.set(-0.32, 0.95, 0);
-  const armLMesh = shadowed(new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.22, 6, 12), skinMat));
-  armLMesh.position.set(0, -0.16, 0);
-  armL.add(armLMesh);
-  const fistL = shadowed(new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 10), skinMat));
-  fistL.position.set(0, -0.32, 0);
-  armL.add(fistL);
-  root.add(armL);
-
-  // Right arm (holds racket up)
-  const armR = new THREE.Group();
-  armR.position.set(0.32, 0.95, 0);
-  const armRMesh = shadowed(new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.22, 6, 12), skinMat));
-  armRMesh.position.set(0, -0.16, 0);
-  armR.add(armRMesh);
-  // Fist grips the handle: racket handle passes through it
-  const fistR = shadowed(new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 10), skinMat));
-  fistR.position.set(0, -0.32, -0.02);
-  armR.add(fistR);
-
-  // Racket in right fist - realistic: grip in fist, head up + forward,
-  // string bed facing the net (-z), oval head + throat + butt cap
+  // Racket in the right hand — grip in the palm, head up + forward,
+  // string bed facing the net (-z). Mount maps old +Y racket space onto the
+  // Mixamo hand bone (rest pose along +X, hangs along -Y after arm adapter).
+  const racketMount = new THREE.Group();
+  racketMount.name = 'racketMount';
+  racketMount.rotation.z = -Math.PI / 2;
+  if (rightHand) rightHand.add(racketMount);
+  else root.add(racketMount);
   const racket = new THREE.Group();
-  racket.position.set(0, -0.32, -0.04);
-  racket.rotation.x = -0.25; // tilt head slightly toward net
-  racket.rotation.z = -0.12; // slight outward angle
+  racket.position.set(0, 0.02, 0);
+  racket.rotation.x = -0.25;
+  racket.rotation.z = -0.12;
+  racketMount.add(racket);
   const gripMat = new THREE.MeshStandardMaterial({ color: 0x2b2b2b, roughness: 0.9 });
   const handle = shadowed(new THREE.Mesh(
     new THREE.CylinderGeometry(0.024, 0.026, 0.30, 10),
     new THREE.MeshStandardMaterial({ color: 0x5b3a1e, roughness: 0.7 })
   ));
-  handle.position.y = 0.02; // grip passes through fist at origin
+  handle.position.y = 0.02;
   racket.add(handle);
   const buttCap = shadowed(new THREE.Mesh(
     new THREE.CylinderGeometry(0.032, 0.032, 0.025, 10),
@@ -514,7 +575,6 @@ export function createPlayer(s, opts = {}) {
   const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.027, 0.027, 0.12, 10), gripMat);
   grip.position.y = -0.06;
   racket.add(grip);
-  // Throat: two shafts from handle top to oval head
   const throatMat = new THREE.MeshStandardMaterial({ color: C.racket, roughness: 0.5 });
   [-0.055, 0.055].forEach(x => {
     const shaft = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.20, 8), throatMat));
@@ -522,7 +582,6 @@ export function createPlayer(s, opts = {}) {
     shaft.rotation.z = -x * 1.1;
     racket.add(shaft);
   });
-  // Oval head (real rackets are not round), string bed faces net (-z)
   const headFrame = shadowed(new THREE.Mesh(
     new THREE.TorusGeometry(0.20, 0.026, 12, 32),
     throatMat
@@ -537,40 +596,6 @@ export function createPlayer(s, opts = {}) {
   strings.scale.y = 1.25;
   strings.position.y = 0.50;
   racket.add(strings);
-  armR.add(racket);
-  root.add(armR);
-
-  // Big chibi head + face + cap
-  const headGroup = new THREE.Group();
-  headGroup.position.set(0, 1.32, 0);
-  headGroup.name = 'playerHead';
-  const head = shadowed(new THREE.Mesh(new THREE.SphereGeometry(0.30, 24, 18), skinMat));
-  headGroup.add(head);
-  const eyeMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.4 });
-  [-0.11, 0.11].forEach(x => {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 10), eyeMat);
-    eye.position.set(x, 0.03, -0.26); // face -z = towards net
-    headGroup.add(eye);
-    const spark = new THREE.Mesh(new THREE.SphereGeometry(0.015, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffffff }));
-    spark.position.set(x + 0.015, 0.045, -0.295);
-    headGroup.add(spark);
-  });
-  const smile = new THREE.Mesh(
-    new THREE.TorusGeometry(0.07, 0.012, 8, 16, Math.PI),
-    new THREE.MeshStandardMaterial({ color: 0x663333, side: THREE.DoubleSide })
-  );
-  smile.position.set(0, -0.08, -0.27);
-  smile.rotation.x = Math.PI; // mouth curve down->up? cute smile
-  smile.rotation.z = Math.PI;
-  headGroup.add(smile);
-  // cap: half sphere + brim forward (-z, towards net)
-  const cap = shadowed(new THREE.Mesh(new THREE.SphereGeometry(0.31, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2.2), capMat));
-  cap.position.y = 0.06;
-  headGroup.add(cap);
-  const brim = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.04, 0.22), capMat));
-  brim.position.set(0, 0.12, -0.34);
-  headGroup.add(brim);
-  root.add(headGroup);
 
   s.add(group);
 
@@ -720,7 +745,11 @@ export function createPlayer(s, opts = {}) {
       headGroup.rotation.z = Math.sin(walkCycle * 1.2) * 0.07 * (0.3 + intensity) + THREE.MathUtils.clamp(-vel.x * 0.012, -0.1, 0.1);
       headGroup.rotation.x = intensity * 0.08 + Math.sin(time * 1.8) * 0.03;
     }
-    headGroup.position.y = 1.32 + Math.sin(time * 2.5 + 1) * 0.012;
+    poseTail(bones, time, intensity);
+    curlFingers(bones, 'Right', stroke ? 0.7 : 0.32);
+    curlFingers(bones, 'Left', stroke ? 0.2 : 0.1);
+    if (leftFore) leftFore.rotation.z = 0.35;
+    if (rightFore) rightFore.rotation.z = -0.35;
 
     // Face forward + slight steer into strafe
     group.rotation.y = baseYaw + THREE.MathUtils.clamp(vel.x * 0.045, -0.35, 0.35);
@@ -1284,7 +1313,6 @@ export function createServeController(pl, bl, s) {
     J.armR.rotation.set(lerp(0.35, -2.6, kTrophy), 0, lerp(-0.2, 1.0, kTrophy)); // elbow HIGH, racket behind back
     J.racket.rotation.set(lerp(-0.25, 0.5, kTrophy), 0, -0.12); // head points DOWN behind back
     J.head.rotation.set(lerp(0.02, 0.35, kUp), 0, Math.sin(kUp * 9) * 0.02); // look up at ball
-    J.head.position.y = 1.32;
   }
 
   function poseStrike(k) {
@@ -1470,6 +1498,9 @@ export function createServeController(pl, bl, s) {
 }
 
 createTennisCourt(scene);
+mascotGltf = await new GLTFLoader().loadAsync(MASCOT_URL);
+const loadingEl = document.getElementById('loading');
+if (loadingEl) loadingEl.remove();
 const player = createPlayer(scene);
 const opponent = createPlayer(scene, {
   name: 'opponent', faceDir: 1, shirtColor: 0x2a9dca, speed: AI.speed,
