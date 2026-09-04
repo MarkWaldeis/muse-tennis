@@ -647,13 +647,17 @@ export function createPlayer(s, opts = {}) {
     if (kneeR) kneeR.rotation.set(p.kneeR ?? 0.35, 0, 0);
   }
 
+  const _clearH = new THREE.Vector3();
+  const HEAD_CLEAR = 0.42;
+
   function keepRacketClear() {
     if (!hipsBone || !neckBone) return;
     const samples = [racketHead, racketTip, headFrame, racketRimL, racketRimR];
-    for (let iter = 0; iter < 3; iter++) {
+    for (let iter = 0; iter < 4; iter++) {
       group.updateMatrixWorld(true);
       hipsBone.getWorldPosition(_clearA);
       neckBone.getWorldPosition(_clearB);
+      if (headGroup) headGroup.getWorldPosition(_clearH);
       _clearAB.subVectors(_clearB, _clearA);
       const abLen2 = Math.max(_clearAB.lengthSq(), 1e-6);
       let push = 0;
@@ -664,21 +668,35 @@ export function createPlayer(s, opts = {}) {
         _clearC.copy(_clearA).addScaledVector(_clearAB, t);
         const dist = _clearP.distanceTo(_clearC);
         if (dist < BODY_CLEAR) push = Math.max(push, BODY_CLEAR - dist);
+        if (headGroup) {
+          const hd = _clearP.distanceTo(_clearH);
+          if (hd < HEAD_CLEAR) push = Math.max(push, HEAD_CLEAR - hd);
+        }
       }
       if (push < 0.002) break;
-      // Move the hitting arm toward T-pose (outboard) — never across the belly.
       if (rightArm) {
         const z = rightArm.rotation.z;
-        rightArm.rotation.z = z + (z === 0 ? 0.35 : Math.sign(-z)) * push * 1.25;
+        rightArm.rotation.z = z + (z === 0 ? 0.35 : Math.sign(-z)) * push * 1.35;
       }
-      if (rightShoulder) rightShoulder.rotation.z -= push * 0.35;
-      if (rightHand) rightHand.rotation.z += push * 0.4;
-      racket.rotation.z += push * 0.3;
+      if (rightShoulder) rightShoulder.rotation.z -= push * 0.4;
+      // Wrist: blend toward a cock that keeps the hoop outboard, not further across the skull.
+      if (rightHand) {
+        const overhead = rightArm && rightArm.rotation.z > 0.25;
+        const targetWz = overhead ? 0.22 : 0.7;
+        rightHand.rotation.z += (targetWz - rightHand.rotation.z) * Math.min(1, push * 2.2);
+      }
+      racket.rotation.z += push * 0.2;
     }
     racketHead.getWorldPosition(_clearP);
-    if (_clearP.y < 0.18) {
-      if (rightHand) rightHand.rotation.z += (0.18 - _clearP.y) * 1.2;
-      racket.rotation.x -= (0.18 - _clearP.y) * 0.8;
+    if (_clearP.y < 0.22) {
+      const lift = 0.22 - _clearP.y;
+      if (rightArm && rightArm.rotation.z > 0.15) {
+        rightArm.rotation.z += lift * 0.9;
+        if (rightHand) rightHand.rotation.z += (0.25 - rightHand.rotation.z) * Math.min(1, lift * 3);
+      } else if (rightHand) {
+        rightHand.rotation.z += lift * 1.1;
+        racket.rotation.x -= lift * 0.7;
+      }
     }
   }
 
@@ -756,38 +774,38 @@ export function createPlayer(s, opts = {}) {
       case 'forehand': {
         const T = STROKE_TIMING, D = T.prep + T.loop + T.swing + T.follow;
         const K1 = T.prep / D, K2 = (T.prep + T.loop) / D, K3 = (T.prep + T.loop + T.swing) / D;
-        let yaw, crouch, Rd, Rf, Re, Ld, Lf, rx;
+        let yaw, crouch, Rd, Rf, Re, Ld, Lf, rx, wz, Rout;
         if (k < K1) {
           const u = easeInOutCubic(k / K1);
           yaw = lerp(0, 0.55, u); crouch = -0.04 * u;
-          Rd = lerp(0.82, 0.7, u); Rf = lerp(0.18, -0.55, u); Re = lerp(0.85, 1.05, u);
-          Ld = lerp(0.75, 0.65, u); Lf = lerp(0.35, 0.7, u);
-          rx = lerp(-0.15, -0.45, u);
+          Rd = lerp(0.70, 0.62, u); Rf = lerp(0.32, -0.55, u); Re = lerp(0.95, 1.05, u);
+          Ld = lerp(0.66, 0.65, u); Lf = lerp(0.48, 0.7, u);
+          rx = lerp(-0.18, -0.45, u); wz = lerp(1.22, 0.95, u); Rout = lerp(0.28, 0.34, u);
         } else if (k < K2) {
           const u = easeInOutCubic((k - K1) / (K2 - K1));
           yaw = 0.55; crouch = -0.05;
-          Rd = lerp(0.7, 0.62, u); Rf = lerp(-0.55, -0.75, u); Re = 1.05;
+          Rd = lerp(0.62, 0.58, u); Rf = lerp(-0.55, -0.72, u); Re = 1.05;
           Ld = 0.65; Lf = 0.7;
-          rx = lerp(-0.45, -0.7, u);
+          rx = lerp(-0.45, -0.65, u); wz = 0.95; Rout = 0.36;
         } else if (k < K3) {
           const ke = (k - K2) / (K3 - K2);
           const yawE = easeOutCubic(Math.min(1, ke * 1.35));
           const armE = easeInCubic(Math.max(0, (ke - 0.2) / 0.8));
-          yaw = lerp(0.55, -0.25, yawE); crouch = -0.05 * (1 - armE);
-          Rd = lerp(0.62, 0.55, armE); Rf = lerp(-0.75, 0.85, armE); Re = lerp(1.05, 0.35, armE);
+          yaw = lerp(0.55, -0.2, yawE); crouch = -0.05 * (1 - armE);
+          Rd = lerp(0.58, 0.52, armE); Rf = lerp(-0.72, 0.7, armE); Re = lerp(1.05, 0.4, armE);
           Ld = lerp(0.65, 0.7, armE); Lf = lerp(0.7, 0.2, armE);
-          rx = lerp(-0.7, -0.05, armE);
+          rx = lerp(-0.65, -0.05, armE); wz = lerp(0.95, 0.55, armE); Rout = lerp(0.36, 0.34, armE);
         } else {
           const u = easeInOutCubic((k - K3) / (1 - K3));
-          yaw = lerp(-0.25, 0, u); crouch = 0;
-          Rd = lerp(0.55, 0.45, u); Rf = lerp(0.85, 0.35, u); Re = lerp(0.35, 0.7, u);
-          Ld = 0.7; Lf = lerp(0.2, 0.3, u);
-          rx = lerp(-0.05, -0.15, u);
+          yaw = lerp(-0.2, 0, u); crouch = 0;
+          Rd = lerp(0.52, 0.70, u); Rf = lerp(0.7, 0.32, u); Re = lerp(0.4, 0.95, u);
+          Ld = lerp(0.7, 0.66, u); Lf = lerp(0.2, 0.48, u);
+          rx = lerp(-0.05, -0.18, u); wz = lerp(0.55, 1.22, u); Rout = lerp(0.34, 0.28, u);
         }
         P = {
           rootY: bob + hop + crouch, rootRX: 0.04, rootRY: yaw, rootRZ: 0,
           spineY: yaw * 0.35, headX: 0.12, headZ: 0,
-          R: { down: Rd, fwd: Rf, out: 0.32, elbow: Re, wz: 1.2, wx: rx * 0.4, sh: 0.18 },
+          R: { down: Rd, fwd: Rf, out: Rout, elbow: Re, wz, wx: rx * 0.35, sh: 0.18 },
           L: { down: Ld, fwd: Lf, out: 0.16, elbow: 0.4, wz: 0.3 },
           legLX: 0.28, legRX: -0.35, legLZ: 0.1, legRZ: -0.12,
           kneeL: 0.45, kneeR: 0.55,
@@ -799,36 +817,36 @@ export function createPlayer(s, opts = {}) {
       case 'backhand': {
         const T = STROKE_TIMING, D = T.prep + T.loop + T.swing + T.follow;
         const K1 = T.prep / D, K2 = (T.prep + T.loop) / D, K3 = (T.prep + T.loop + T.swing) / D;
-        let yaw, crouch, Rd, Rf, Re, Ld, Lf, Le, rx;
+        let yaw, crouch, Rd, Rf, Re, Ld, Lf, Le, rx, wz, Rout;
         if (k < K1) {
           const u = easeInOutCubic(k / K1);
           yaw = lerp(0, -0.55, u); crouch = -0.04 * u;
-          Rd = lerp(0.82, 0.72, u); Rf = lerp(0.18, -0.15, u); Re = lerp(0.85, 0.95, u);
-          Ld = lerp(0.75, 0.7, u); Lf = lerp(0.35, -0.55, u); Le = lerp(0.55, 0.9, u);
-          rx = lerp(-0.15, -0.35, u);
+          Rd = lerp(0.70, 0.62, u); Rf = lerp(0.32, -0.12, u); Re = lerp(0.95, 0.95, u);
+          Ld = lerp(0.66, 0.7, u); Lf = lerp(0.48, -0.55, u); Le = lerp(0.55, 0.9, u);
+          rx = lerp(-0.18, -0.35, u); wz = lerp(1.22, 0.9, u); Rout = lerp(0.28, 0.36, u);
         } else if (k < K2) {
           const u = easeInOutCubic((k - K1) / (K2 - K1));
           yaw = -0.55; crouch = lerp(-0.04, -0.06, u);
-          Rd = 0.72; Rf = lerp(-0.15, -0.25, u); Re = 0.95;
-          Ld = 0.7; Lf = lerp(-0.55, -0.7, u); Le = 0.95;
-          rx = -0.35;
+          Rd = 0.62; Rf = lerp(-0.12, -0.22, u); Re = 0.95;
+          Ld = 0.7; Lf = lerp(-0.55, -0.68, u); Le = 0.95;
+          rx = -0.35; wz = 0.9; Rout = 0.38;
         } else if (k < K3) {
           const u = easeInCubic((k - K2) / (K3 - K2));
-          yaw = lerp(-0.55, 0.3, u); crouch = -0.06 * (1 - u);
-          Rd = lerp(0.72, 0.58, u); Rf = lerp(-0.25, 0.7, u); Re = lerp(0.95, 0.4, u);
-          Ld = lerp(0.7, 0.62, u); Lf = lerp(-0.7, 0.55, u); Le = lerp(0.95, 0.45, u);
-          rx = lerp(-0.35, -0.05, u);
+          yaw = lerp(-0.55, 0.28, u); crouch = -0.06 * (1 - u);
+          Rd = lerp(0.62, 0.55, u); Rf = lerp(-0.22, 0.62, u); Re = lerp(0.95, 0.42, u);
+          Ld = lerp(0.7, 0.62, u); Lf = lerp(-0.68, 0.5, u); Le = lerp(0.95, 0.45, u);
+          rx = lerp(-0.35, -0.05, u); wz = lerp(0.9, 0.55, u); Rout = lerp(0.38, 0.34, u);
         } else {
           const u = easeInOutCubic((k - K3) / (1 - K3));
-          yaw = lerp(0.3, 0, u); crouch = 0;
-          Rd = lerp(0.58, 0.7, u); Rf = lerp(0.7, 0.25, u); Re = lerp(0.4, 0.8, u);
-          Ld = lerp(0.62, 0.75, u); Lf = lerp(0.55, 0.3, u); Le = lerp(0.45, 0.55, u);
-          rx = lerp(-0.05, -0.15, u);
+          yaw = lerp(0.28, 0, u); crouch = 0;
+          Rd = lerp(0.55, 0.70, u); Rf = lerp(0.62, 0.32, u); Re = lerp(0.42, 0.95, u);
+          Ld = lerp(0.62, 0.66, u); Lf = lerp(0.5, 0.48, u); Le = lerp(0.45, 0.72, u);
+          rx = lerp(-0.05, -0.18, u); wz = lerp(0.55, 1.22, u); Rout = lerp(0.34, 0.28, u);
         }
         P = {
           rootY: bob + hop + crouch, rootRX: 0.02, rootRY: yaw, rootRZ: 0,
           spineY: yaw * 0.4, headX: 0.1, headZ: 0,
-          R: { down: Rd, fwd: Rf, out: 0.34, elbow: Re, wz: 1.15, wx: 0.1, sh: 0.16 },
+          R: { down: Rd, fwd: Rf, out: Rout, elbow: Re, wz, wx: 0.08, sh: 0.16 },
           L: { down: Ld, fwd: Lf, out: 0.22, elbow: Le, wz: 0.6, sh: 0.12 },
           legLX: 0.38, legRX: -0.22, legLZ: 0.12, legRZ: -0.08,
           kneeL: 0.55, kneeR: 0.4,
@@ -865,8 +883,8 @@ export function createPlayer(s, opts = {}) {
           headZ: Math.sin(kUp * 9) * 0.02,
           // Toss arm goes straight up, away from the head (out > 0).
           L: { down: lerp(0.68, -0.85, kUp), fwd: lerp(0.55, 0.15, kUp), out: lerp(0.14, 0.28, kUp), elbow: lerp(0.45, 0.12, kUp), wz: 0.15 },
-          // Trophy: elbow high, racket behind the head but OUTBOARD (toward T-pose).
-          R: { down: lerp(0.78, -0.12, kTrophy), fwd: lerp(0.18, -0.52, kTrophy), out: lerp(0.30, 0.42, kTrophy), elbow: lerp(1.05, 1.15, kTrophy), wz: lerp(1.35, -0.85, kTrophy), wx: lerp(-0.12, 0.3, kTrophy), sh: lerp(0.14, 0.22, kTrophy) },
+          // Trophy: upper arm raised, racket head UP and behind the hitting shoulder (not a backscratch to the court).
+          R: { down: lerp(0.78, -0.62, kTrophy), fwd: lerp(0.18, -0.38, kTrophy), out: lerp(0.30, 0.36, kTrophy), elbow: lerp(1.05, 0.75, kTrophy), wz: lerp(1.35, 0.22, kTrophy), wx: lerp(-0.12, 0.12, kTrophy), sh: lerp(0.14, 0.28, kTrophy) },
           legLX: lerp(0.32, 0.5, kTrophy), legRX: lerp(-0.4, -0.55, kTrophy),
           legLZ: 0.1, legRZ: -0.1,
           kneeL: lerp(0.55, 0.75, kTrophy), kneeR: lerp(0.65, 0.85, kTrophy),
@@ -887,8 +905,8 @@ export function createPlayer(s, opts = {}) {
           headX: lerp(0.45, 0.12, w),
           headZ: 0,
           L: { down: w < 0.4 ? -0.85 : lerp(-0.85, 0.35, (w - 0.4) / 0.6), fwd: 0.15, out: 0.26, elbow: 0.2, wz: 0.15 },
-          // Whip over the top, arm stays outside: never wrap the frame through the skull.
-          R: { down: lerp(-0.12, -0.65, w), fwd: lerp(-0.52, 0.72, w), out: lerp(0.42, 0.32, w), elbow: lerp(1.15, 0.28, w), wz: lerp(-0.85, 0.55, w), wx: lerp(0.3, -0.08, w), sh: lerp(0.22, 0.12, w) },
+          // Overhead whip: arm goes UP and FORWARD on the right side.
+          R: { down: lerp(-0.62, -0.88, w), fwd: lerp(-0.38, 0.5, w), out: lerp(0.36, 0.40, w), elbow: lerp(0.75, 0.18, w), wz: lerp(0.22, 0.35, w), wx: lerp(0.12, -0.05, w), sh: lerp(0.28, 0.16, w) },
           legLX: lerp(0.5, 0.08, w), legRX: lerp(-0.55, -0.08, w),
           legLZ: 0.1, legRZ: -0.1,
           kneeL: lerp(0.75, 0.2, w), kneeR: lerp(0.85, 0.2, w),
@@ -908,9 +926,9 @@ export function createPlayer(s, opts = {}) {
           spineY: lerp(-0.15, 0, u),
           headX: lerp(0.12, 0, u),
           headZ: e.happy ? Math.sin(k * 12) * 0.08 : 0,
-          L: { down: lerp(0.35, 0.75, u), fwd: lerp(0.15, 0.35, u), out: 0.14, elbow: lerp(0.2, 0.55, u), wz: 0.3 },
-          // Finish high on the RIGHT side — never wrap the frame through the torso.
-          R: { down: lerp(-0.65, 0.38, u), fwd: lerp(0.72, 0.32, u), out: lerp(0.32, 0.26, u), elbow: lerp(0.28, 0.8, u), wz: lerp(0.55, 1.25, u), wx: -0.1, sh: 0.14 },
+          L: { down: lerp(0.35, 0.66, u), fwd: lerp(0.15, 0.48, u), out: 0.14, elbow: lerp(0.2, 0.72, u), wz: 0.3 },
+          // Recover to the ready on the RIGHT — never wrap the frame through the torso.
+          R: { down: lerp(-0.88, 0.70, u), fwd: lerp(0.5, 0.32, u), out: lerp(0.40, 0.28, u), elbow: lerp(0.18, 0.95, u), wz: lerp(0.35, 1.22, u), wx: lerp(-0.05, -0.12, u), sh: 0.16 },
           legLX: lerp(0.08, 0.35, u), legRX: lerp(-0.08, -0.45, u),
           legLZ: 0.1, legRZ: -0.1,
           kneeL: lerp(0.2, 0.5, u), kneeR: lerp(0.2, 0.7, u),
