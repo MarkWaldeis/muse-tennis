@@ -560,6 +560,15 @@ function easeInOutCubic(k) { k = THREE.MathUtils.clamp(k, 0, 1); return k < 0.5 
 function easeOutCubic(k) { k = THREE.MathUtils.clamp(k, 0, 1); return 1 - Math.pow(1 - k, 3); }
 function easeInCubic(k) { k = THREE.MathUtils.clamp(k, 0, 1); return k * k * k; }
 const lerp = THREE.MathUtils.lerp;
+function delayEase(k, delay, easeFn) {
+  const t = THREE.MathUtils.clamp((k - delay) / Math.max(1e-4, 1 - delay), 0, 1);
+  return (easeFn || easeOutCubic)(t);
+}
+function strokeGates() {
+  const T = STROKE_TIMING;
+  const D = T.prep + T.loop + T.swing + T.follow;
+  return { K1: T.prep / D, K2: (T.prep + T.loop) / D, K3: (T.prep + T.loop + T.swing) / D };
+}
 
 function poseTail(bones, t, intensity) {
   const a = Math.sin(t * 4.2) * 0.18 * (0.25 + intensity);
@@ -585,9 +594,9 @@ function curlFingers(bones, tag, amount) {
   }
 }
 
-// Groundstroke keyframe durations (s); forehand/backhand total ~0.47s
+// Groundstroke keyframe durations (s); total ~0.56s so the unit-turn / whip still reads
 // Phases: PREP (unit turn) -> LOOP (take-back) -> SWING (explosive) -> FOLLOW (recover)
-export const STROKE_TIMING = { prep: 0.12, loop: 0.10, swing: 0.10, follow: 0.15 };
+export const STROKE_TIMING = { prep: 0.14, loop: 0.12, swing: 0.12, follow: 0.18 };
 
 // Keyboard + touch input (WASD / arrows / Space / on-screen stick + hit)
 export const input = { x: 0, z: 0, swingPressed: false };
@@ -748,8 +757,13 @@ export function createPlayer(s, opts = {}) {
   const legR = boneByName(bones, 'mixamorig:RightUpLeg');
   const kneeL = boneByName(bones, 'mixamorig:LeftLeg');
   const kneeR = boneByName(bones, 'mixamorig:RightLeg');
+  const footL = boneByName(bones, 'mixamorig:LeftFoot');
+  const footR = boneByName(bones, 'mixamorig:RightFoot');
+  const toeL = boneByName(bones, 'mixamorig:LeftToeBase');
+  const toeR = boneByName(bones, 'mixamorig:RightToeBase');
   const spine = boneByName(bones, 'mixamorig:Spine');
   const spine1 = boneByName(bones, 'mixamorig:Spine1');
+  const spine2 = boneByName(bones, 'mixamorig:Spine2');
   const hipsBone = boneByName(bones, 'mixamorig:Hips');
   const neckBone = boneByName(bones, 'mixamorig:Neck');
   const torso = spine1 || root;
@@ -856,10 +870,29 @@ export function createPlayer(s, opts = {}) {
   }
 
   function poseLegs(p) {
-    if (legL) legL.rotation.set(p.legLX ?? 0.12, 0, p.legLZ ?? 0.08);
-    if (legR) legR.rotation.set(p.legRX ?? -0.12, 0, p.legRZ ?? -0.08);
+    if (legL) legL.rotation.set(p.legLX ?? 0.12, p.legLY ?? 0, p.legLZ ?? 0.08);
+    if (legR) legR.rotation.set(p.legRX ?? -0.12, p.legRY ?? 0, p.legRZ ?? -0.08);
     if (kneeL) kneeL.rotation.set(p.kneeL ?? 0.35, 0, 0);
     if (kneeR) kneeR.rotation.set(p.kneeR ?? 0.35, 0, 0);
+    if (footL) footL.rotation.set(p.footLX ?? 0.16, 0, p.footLZ ?? 0);
+    if (footR) footR.rotation.set(p.footRX ?? 0.16, 0, p.footRZ ?? 0);
+    if (toeL) toeL.rotation.set(p.toeL ?? 0, 0, 0);
+    if (toeR) toeR.rotation.set(p.toeR ?? 0, 0, 0);
+  }
+
+  function poseTorso(p) {
+    if (hipsBone) {
+      hipsBone.rotation.y = p.hipY ?? 0;
+      hipsBone.rotation.z = p.hipZ ?? 0;
+      if (p.hipX != null) hipsBone.rotation.x = p.hipX;
+    }
+    if (spine) {
+      spine.rotation.y = p.spineY ?? 0;
+      if (p.spineX != null) spine.rotation.x = p.spineX;
+      if (p.spineZ != null) spine.rotation.z = p.spineZ;
+    }
+    if (spine1) spine1.rotation.y = p.spine1Y ?? 0;
+    if (spine2) spine2.rotation.y = p.spine2Y ?? 0;
   }
 
   const _clearH = new THREE.Vector3();
@@ -940,22 +973,26 @@ export function createPlayer(s, opts = {}) {
     const e = extra || {};
     const bob = e.bob ?? 0;
     const hop = e.hop ?? 0;
+    const splitZ = e.split ? 0.22 : 0.1;
     let P; // filled per clip
     switch (name) {
       case 'idle': {
-        // Athletic ready: racket in front of the right hip, left hand near the throat.
+        const sway = Math.sin((e.time ?? 0) * 1.35);
         P = {
-          rootY: bob + hop - 0.03,
+          rootY: bob + hop - 0.03 + Math.abs(sway) * 0.006,
           rootRX: 0.05,
           rootRY: 0,
           rootRZ: THREE.MathUtils.clamp(-(e.vx ?? 0) * 0.02, -0.1, 0.1),
-          spineY: 0.04,
+          hipY: 0, hipZ: sway * 0.045,
+          spineY: 0.04, spine1Y: 0.02, spine2Y: 0,
           headX: 0.06 + Math.sin((e.time ?? 0) * 1.8) * 0.02,
-          headZ: 0,
+          headZ: sway * 0.02,
           R: { down: 0.70, fwd: 0.32, out: 0.28, elbow: 0.95, wz: 1.22, wx: -0.12, sh: 0.16 },
           L: { down: 0.66, fwd: 0.48, out: 0.16, elbow: 0.72, wz: 0.35, sh: 0.1 },
-          legLX: 0.22, legRX: -0.28, legLZ: e.split ? 0.22 : 0.1, legRZ: e.split ? -0.22 : -0.1,
-          kneeL: 0.42, kneeR: 0.48,
+          legLX: 0.22, legRX: -0.28, legLZ: splitZ, legRZ: -splitZ,
+          kneeL: 0.42 + Math.max(0, sway) * 0.05, kneeR: 0.48 + Math.max(0, -sway) * 0.05,
+          footLX: 0.16 + Math.max(0, sway) * 0.07, footRX: 0.16 + Math.max(0, -sway) * 0.07,
+          toeL: 0.04, toeR: 0.04,
           racket: { x: -0.18, y: Math.PI, z: 0.06 },
           fingersR: 0.55, fingersL: 0.22
         };
@@ -964,123 +1001,200 @@ export function createPlayer(s, opts = {}) {
       case 'run': {
         const run = e.intensity ?? 0;
         const w = e.walk ?? 0;
-        // Racket stays in front of the hitting side — no sprinter arm-pump through the belly.
+        const phi = w * 2.4;
+        const sL = Math.sin(phi);
+        const sR = -sL;
+        const vx = e.vx ?? 0;
+        const vz = e.vz ?? 0;
+        const spd = Math.hypot(vx, vz);
+        const lateral = spd > 0.2 ? Math.abs(vx) / spd : 0;
+        const shuf = THREE.MathUtils.clamp(lateral * 1.2, 0, 1);
+        const sprint = run * (1 - shuf * 0.65);
+        const stride = lerp(0.40, 0.84, sprint) * run;
+        const kneeLift = lerp(0.30, 0.74, sprint);
+        const contact = Math.pow(Math.abs(Math.cos(phi)), 2);
+        const flight = Math.max(0, sprint - 0.4) * 0.07 * Math.abs(sL);
+        const dip = contact * 0.05 * run;
+        const hipY = sL * 0.14 * run;
         P = {
-          rootY: bob + hop,
-          rootRX: -faceDir * run * 0.10,
+          rootY: hop + flight - dip,
+          rootRX: -faceDir * (0.07 + sprint * 0.16),
           rootRY: 0,
-          rootRZ: THREE.MathUtils.clamp(-(e.vx ?? 0) * 0.02, -0.12, 0.12),
-          spineY: 0,
-          headX: run * 0.08 + Math.sin((e.time ?? 0) * 1.8) * 0.03,
-          headZ: Math.sin(w * 1.2) * 0.06 * run,
-          R: { down: 0.68, fwd: 0.28 + Math.sin(w * 2.4) * 0.08 * run, out: 0.26, elbow: 0.9, wz: 1.2, wx: -0.1, sh: 0.14 },
-          L: { down: 0.62, fwd: 0.4 - Math.sin(w * 2.4) * 0.22 * run, out: 0.14, elbow: 0.5, wz: 0.3 },
-          legLX: 0.12 + Math.sin(w * 2.4) * 0.7 * run,
-          legRX: -0.12 - Math.sin(w * 2.4) * 0.7 * run,
-          legLZ: e.split ? 0.22 : 0.08,
-          legRZ: e.split ? -0.22 : -0.08,
-          kneeL: 0.25 + Math.max(0, -Math.sin(w * 2.4)) * 0.55 * run,
-          kneeR: 0.25 + Math.max(0, Math.sin(w * 2.4)) * 0.55 * run,
+          rootRZ: THREE.MathUtils.clamp(-vx * 0.025, -0.14, 0.14),
+          hipY, hipZ: sL * 0.07 * run,
+          spineY: -hipY * 0.35, spine1Y: -hipY * 0.2, spine2Y: -hipY * 0.85,
+          spineX: sprint * 0.04,
+          headX: run * 0.1 + Math.sin((e.time ?? 0) * 1.8) * 0.025,
+          headZ: sL * 0.05 * run,
+          R: { down: 0.68, fwd: 0.30 + sL * 0.07 * run, out: 0.26, elbow: 0.88, wz: 1.18, wx: -0.1, sh: 0.14 },
+          L: { down: 0.58, fwd: 0.36 - sL * 0.4 * run, out: 0.16, elbow: lerp(0.55, 0.32, run), wz: 0.28, sh: 0.1 },
+          legLX: 0.10 + sL * stride,
+          legRX: -0.10 + sR * stride,
+          legLZ: (e.split ? 0.22 : 0.08) + sL * 0.2 * shuf,
+          legRZ: (e.split ? -0.22 : -0.08) + sR * 0.2 * shuf,
+          kneeL: 0.20 + Math.max(0, sL) * kneeLift * run + Math.max(0, -sL) * 0.16 * run,
+          kneeR: 0.20 + Math.max(0, sR) * kneeLift * run + Math.max(0, -sR) * 0.16 * run,
+          footLX: 0.10 - Math.min(0, sL) * 0.48 * run + Math.max(0, sL) * 0.2 * run,
+          footRX: 0.10 - Math.min(0, sR) * 0.48 * run + Math.max(0, sR) * 0.2 * run,
+          toeL: Math.max(0, -sL) * 0.38 * run,
+          toeR: Math.max(0, -sR) * 0.38 * run,
           racket: { x: -0.16, y: Math.PI, z: 0.06 },
           fingersR: 0.5, fingersL: 0.12
         };
         break;
       }
       case 'forehand': {
-        const T = STROKE_TIMING, D = T.prep + T.loop + T.swing + T.follow;
-        const K1 = T.prep / D, K2 = (T.prep + T.loop) / D, K3 = (T.prep + T.loop + T.swing) / D;
-        let yaw, crouch, Rd, Rf, Re, Ld, Lf, rx, wz, Rout;
+        const { K1, K2, K3 } = strokeGates();
+        let yaw, hipY, spineY, spine2Y, crouch, Rd, Rf, Re, Ld, Lf, Le, rx, wz, Rout, wx;
+        let lLX, lRX, knL, knR, fLX, fRX, spineX;
         if (k < K1) {
           const u = easeInOutCubic(k / K1);
-          yaw = lerp(0, 0.55, u); crouch = -0.04 * u;
-          Rd = lerp(0.70, 0.62, u); Rf = lerp(0.32, -0.55, u); Re = lerp(0.95, 1.05, u);
-          Ld = lerp(0.66, 0.65, u); Lf = lerp(0.48, 0.7, u);
-          rx = lerp(-0.18, -0.45, u); wz = lerp(1.22, 0.95, u); Rout = lerp(0.28, 0.34, u);
+          yaw = lerp(0, 0.82, u); hipY = lerp(0, 0.48, u);
+          spineY = lerp(0.04, 0.58, u); spine2Y = lerp(0, 0.24, u); spineX = 0.02 * u;
+          crouch = -0.07 * u;
+          Rd = lerp(0.70, 0.56, u); Rf = lerp(0.32, -0.64, u); Re = lerp(0.95, 1.1, u); Rout = lerp(0.28, 0.36, u);
+          Ld = lerp(0.66, 0.60, u); Lf = lerp(0.48, 0.86, u); Le = lerp(0.72, 0.32, u);
+          rx = lerp(-0.18, -0.58, u); wz = lerp(1.22, 1.02, u); wx = lerp(-0.12, -0.32, u);
+          lLX = lerp(0.22, 0.16, u); lRX = lerp(-0.28, -0.52, u);
+          knL = lerp(0.42, 0.36, u); knR = lerp(0.48, 0.78, u);
+          fLX = lerp(0.16, 0.12, u); fRX = lerp(0.16, 0.32, u);
         } else if (k < K2) {
           const u = easeInOutCubic((k - K1) / (K2 - K1));
-          yaw = 0.55; crouch = -0.05;
-          Rd = lerp(0.62, 0.58, u); Rf = lerp(-0.55, -0.72, u); Re = 1.05;
-          Ld = 0.65; Lf = 0.7;
-          rx = lerp(-0.45, -0.65, u); wz = 0.95; Rout = 0.36;
+          yaw = 0.82; hipY = 0.48; spineY = 0.58; spine2Y = 0.24; spineX = 0.04;
+          crouch = lerp(-0.07, -0.1, u);
+          Rd = lerp(0.56, 0.48, u); Rf = lerp(-0.64, -0.84, u); Re = 1.1; Rout = 0.38;
+          Ld = 0.60; Lf = 0.86; Le = 0.32;
+          rx = lerp(-0.58, -0.88, u); wz = 1.02; wx = lerp(-0.32, -0.42, u);
+          lLX = 0.16; lRX = -0.52;
+          knL = lerp(0.36, 0.4, u); knR = lerp(0.78, 0.86, u);
+          fLX = 0.12; fRX = 0.34;
         } else if (k < K3) {
           const ke = (k - K2) / (K3 - K2);
-          const yawE = easeOutCubic(Math.min(1, ke * 1.35));
-          const armE = easeInCubic(Math.max(0, (ke - 0.2) / 0.8));
-          yaw = lerp(0.55, -0.2, yawE); crouch = -0.05 * (1 - armE);
-          Rd = lerp(0.58, 0.52, armE); Rf = lerp(-0.72, 0.7, armE); Re = lerp(1.05, 0.4, armE);
-          Ld = lerp(0.65, 0.7, armE); Lf = lerp(0.7, 0.2, armE);
-          rx = lerp(-0.65, -0.05, armE); wz = lerp(0.95, 0.55, armE); Rout = lerp(0.36, 0.34, armE);
+          const hipE = easeOutCubic(Math.min(1, ke * 1.45));
+          const torsoE = delayEase(ke, 0.12, easeOutCubic);
+          const armE = delayEase(ke, 0.2, easeInCubic);
+          const wristE = delayEase(ke, 0.42, easeInCubic);
+          yaw = lerp(0.82, -0.22, hipE);
+          hipY = lerp(0.48, -0.28, hipE);
+          spineY = lerp(0.58, -0.14, torsoE);
+          spine2Y = lerp(0.24, -0.1, torsoE);
+          spineX = lerp(0.04, 0.1, armE);
+          crouch = lerp(-0.1, -0.02, armE);
+          Rd = lerp(0.48, 0.36, armE); Rf = lerp(-0.84, 0.88, armE); Re = lerp(1.1, 0.34, armE); Rout = lerp(0.38, 0.34, armE);
+          Ld = lerp(0.60, 0.72, armE); Lf = lerp(0.86, 0.12, armE); Le = lerp(0.32, 0.55, armE);
+          rx = lerp(-0.88, 0.14, wristE); wz = lerp(1.02, 0.4, wristE); wx = lerp(-0.42, -0.04, wristE);
+          lLX = lerp(0.16, 0.5, hipE); lRX = lerp(-0.52, -0.1, hipE);
+          knL = lerp(0.4, 0.58, hipE); knR = lerp(0.86, 0.28, hipE);
+          fLX = lerp(0.12, 0.22, hipE); fRX = lerp(0.34, 0.1, hipE);
         } else {
           const u = easeInOutCubic((k - K3) / (1 - K3));
-          yaw = lerp(-0.2, 0, u); crouch = 0;
-          Rd = lerp(0.52, 0.70, u); Rf = lerp(0.7, 0.32, u); Re = lerp(0.4, 0.95, u);
-          Ld = lerp(0.7, 0.66, u); Lf = lerp(0.2, 0.48, u);
-          rx = lerp(-0.05, -0.18, u); wz = lerp(0.55, 1.22, u); Rout = lerp(0.34, 0.28, u);
+          yaw = lerp(-0.22, 0, u); hipY = lerp(-0.28, 0, u);
+          spineY = lerp(-0.14, 0.04, u); spine2Y = lerp(-0.1, 0, u); spineX = lerp(0.1, 0, u);
+          crouch = 0;
+          Rd = lerp(0.36, 0.70, u); Rf = lerp(0.88, 0.32, u); Re = lerp(0.34, 0.95, u); Rout = lerp(0.34, 0.28, u);
+          Ld = lerp(0.72, 0.66, u); Lf = lerp(0.12, 0.48, u); Le = lerp(0.55, 0.72, u);
+          rx = lerp(0.14, -0.18, u); wz = lerp(0.4, 1.22, u); wx = lerp(-0.04, -0.12, u);
+          lLX = lerp(0.5, 0.22, u); lRX = lerp(-0.1, -0.28, u);
+          knL = lerp(0.58, 0.42, u); knR = lerp(0.28, 0.48, u);
+          fLX = lerp(0.22, 0.16, u); fRX = lerp(0.1, 0.16, u);
         }
         P = {
-          rootY: bob + hop + crouch, rootRX: 0.04, rootRY: yaw, rootRZ: 0,
-          spineY: yaw * 0.35, headX: 0.12, headZ: 0,
-          R: { down: Rd, fwd: Rf, out: Rout, elbow: Re, wz, wx: rx * 0.35, sh: 0.18 },
-          L: { down: Ld, fwd: Lf, out: 0.16, elbow: 0.4, wz: 0.3 },
-          legLX: 0.28, legRX: -0.35, legLZ: 0.1, legRZ: -0.12,
-          kneeL: 0.45, kneeR: 0.55,
+          rootY: bob + hop + crouch, rootRX: 0.05 + (spineX ?? 0), rootRY: yaw, rootRZ: 0,
+          hipY, spineY, spine1Y: spineY * 0.25, spine2Y, spineX,
+          headX: 0.14, headZ: yaw * 0.08,
+          R: { down: Rd, fwd: Rf, out: Rout, elbow: Re, wz, wx, sh: 0.18 },
+          L: { down: Ld, fwd: Lf, out: 0.16, elbow: Le, wz: 0.3, sh: 0.1 },
+          legLX: lLX, legRX: lRX, legLZ: 0.1, legRZ: -0.12,
+          kneeL: knL, kneeR: knR, footLX: fLX, footRX: fRX, toeL: 0.06, toeR: 0.08,
           racket: { x: rx, y: Math.PI, z: 0.05 },
-          fingersR: 0.72, fingersL: 0.15
+          fingersR: 0.74, fingersL: 0.15
         };
         break;
       }
       case 'backhand': {
-        const T = STROKE_TIMING, D = T.prep + T.loop + T.swing + T.follow;
-        const K1 = T.prep / D, K2 = (T.prep + T.loop) / D, K3 = (T.prep + T.loop + T.swing) / D;
-        let yaw, crouch, Rd, Rf, Re, Ld, Lf, Le, rx, wz, Rout;
+        const { K1, K2, K3 } = strokeGates();
+        let yaw, hipY, spineY, spine2Y, crouch, Rd, Rf, Re, Rout, Ld, Lf, Le, Lout, rx, wz, wx;
+        let lLX, lRX, knL, knR, fLX, fRX, fL;
         if (k < K1) {
           const u = easeInOutCubic(k / K1);
-          yaw = lerp(0, -0.55, u); crouch = -0.04 * u;
-          Rd = lerp(0.70, 0.62, u); Rf = lerp(0.32, -0.12, u); Re = lerp(0.95, 0.95, u);
-          Ld = lerp(0.66, 0.7, u); Lf = lerp(0.48, -0.55, u); Le = lerp(0.55, 0.9, u);
-          rx = lerp(-0.18, -0.35, u); wz = lerp(1.22, 0.9, u); Rout = lerp(0.28, 0.36, u);
+          yaw = lerp(0, -0.84, u); hipY = lerp(0, -0.52, u);
+          spineY = lerp(0.04, -0.62, u); spine2Y = lerp(0, -0.2, u);
+          crouch = -0.06 * u;
+          Rd = lerp(0.70, 0.54, u); Rf = lerp(0.32, -0.1, u); Re = lerp(0.95, 0.92, u); Rout = lerp(0.28, 0.3, u);
+          Ld = lerp(0.66, 0.5, u); Lf = lerp(0.48, -0.52, u); Le = lerp(0.72, 1.08, u); Lout = lerp(0.16, 0.26, u);
+          rx = lerp(-0.18, 0.2, u); wz = lerp(1.22, 0.7, u); wx = lerp(-0.12, 0.14, u);
+          lLX = lerp(0.22, 0.55, u); lRX = lerp(-0.28, -0.14, u);
+          knL = lerp(0.42, 0.78, u); knR = lerp(0.48, 0.36, u);
+          fLX = lerp(0.16, 0.3, u); fRX = lerp(0.16, 0.12, u);
+          fL = lerp(0.22, 0.78, u);
         } else if (k < K2) {
           const u = easeInOutCubic((k - K1) / (K2 - K1));
-          yaw = -0.55; crouch = lerp(-0.04, -0.06, u);
-          Rd = 0.62; Rf = lerp(-0.12, -0.22, u); Re = 0.95;
-          Ld = 0.7; Lf = lerp(-0.55, -0.68, u); Le = 0.95;
-          rx = -0.35; wz = 0.9; Rout = 0.38;
+          yaw = -0.84; hipY = -0.52; spineY = -0.62; spine2Y = -0.2;
+          crouch = lerp(-0.06, -0.09, u);
+          Rd = 0.52; Rf = lerp(-0.1, -0.2, u); Re = 0.95; Rout = 0.32;
+          Ld = 0.48; Lf = lerp(-0.52, -0.7, u); Le = 1.12; Lout = 0.28;
+          rx = lerp(0.2, 0.32, u); wz = 0.68; wx = 0.16;
+          lLX = 0.55; lRX = -0.14;
+          knL = lerp(0.78, 0.86, u); knR = 0.38;
+          fLX = 0.32; fRX = 0.12;
+          fL = 0.8;
         } else if (k < K3) {
-          const u = easeInCubic((k - K2) / (K3 - K2));
-          yaw = lerp(-0.55, 0.28, u); crouch = -0.06 * (1 - u);
-          Rd = lerp(0.62, 0.55, u); Rf = lerp(-0.22, 0.62, u); Re = lerp(0.95, 0.42, u);
-          Ld = lerp(0.7, 0.62, u); Lf = lerp(-0.68, 0.5, u); Le = lerp(0.95, 0.45, u);
-          rx = lerp(-0.35, -0.05, u); wz = lerp(0.9, 0.55, u); Rout = lerp(0.38, 0.34, u);
+          const ke = (k - K2) / (K3 - K2);
+          const hipE = easeOutCubic(Math.min(1, ke * 1.4));
+          const torsoE = delayEase(ke, 0.1, easeOutCubic);
+          const armE = delayEase(ke, 0.16, easeInCubic);
+          const wristE = delayEase(ke, 0.38, easeInCubic);
+          yaw = lerp(-0.84, 0.32, hipE);
+          hipY = lerp(-0.52, 0.3, hipE);
+          spineY = lerp(-0.62, 0.16, torsoE);
+          spine2Y = lerp(-0.2, 0.08, torsoE);
+          crouch = lerp(-0.09, -0.02, armE);
+          Rd = lerp(0.52, 0.28, armE); Rf = lerp(-0.2, 0.7, armE); Re = lerp(0.95, 0.38, armE); Rout = lerp(0.32, 0.34, armE);
+          Ld = lerp(0.48, 0.32, armE); Lf = lerp(-0.7, 0.62, armE); Le = lerp(1.12, 0.4, armE); Lout = lerp(0.28, 0.22, armE);
+          rx = lerp(0.32, -0.04, wristE); wz = lerp(0.68, 0.48, wristE); wx = lerp(0.16, 0.02, wristE);
+          lLX = lerp(0.55, 0.12, hipE); lRX = lerp(-0.14, -0.46, hipE);
+          knL = lerp(0.86, 0.3, hipE); knR = lerp(0.38, 0.58, hipE);
+          fLX = lerp(0.32, 0.12, hipE); fRX = lerp(0.12, 0.24, hipE);
+          fL = 0.8;
         } else {
           const u = easeInOutCubic((k - K3) / (1 - K3));
-          yaw = lerp(0.28, 0, u); crouch = 0;
-          Rd = lerp(0.55, 0.70, u); Rf = lerp(0.62, 0.32, u); Re = lerp(0.42, 0.95, u);
-          Ld = lerp(0.62, 0.66, u); Lf = lerp(0.5, 0.48, u); Le = lerp(0.45, 0.72, u);
-          rx = lerp(-0.05, -0.18, u); wz = lerp(0.55, 1.22, u); Rout = lerp(0.34, 0.28, u);
+          yaw = lerp(0.32, 0, u); hipY = lerp(0.3, 0, u);
+          spineY = lerp(0.16, 0.04, u); spine2Y = lerp(0.08, 0, u);
+          crouch = 0;
+          Rd = lerp(0.28, 0.70, u); Rf = lerp(0.7, 0.32, u); Re = lerp(0.38, 0.95, u); Rout = lerp(0.34, 0.28, u);
+          Ld = lerp(0.32, 0.66, u); Lf = lerp(0.62, 0.48, u); Le = lerp(0.4, 0.72, u); Lout = lerp(0.22, 0.16, u);
+          rx = lerp(-0.04, -0.18, u); wz = lerp(0.48, 1.22, u); wx = lerp(0.02, -0.12, u);
+          lLX = lerp(0.12, 0.22, u); lRX = lerp(-0.46, -0.28, u);
+          knL = lerp(0.3, 0.42, u); knR = lerp(0.58, 0.48, u);
+          fLX = lerp(0.12, 0.16, u); fRX = lerp(0.24, 0.16, u);
+          fL = lerp(0.8, 0.22, u);
         }
         P = {
-          rootY: bob + hop + crouch, rootRX: 0.02, rootRY: yaw, rootRZ: 0,
-          spineY: yaw * 0.4, headX: 0.1, headZ: 0,
-          R: { down: Rd, fwd: Rf, out: Rout, elbow: Re, wz, wx: 0.08, sh: 0.16 },
-          L: { down: Ld, fwd: Lf, out: 0.22, elbow: Le, wz: 0.6, sh: 0.12 },
-          legLX: 0.38, legRX: -0.22, legLZ: 0.12, legRZ: -0.08,
-          kneeL: 0.55, kneeR: 0.4,
-          racket: { x: rx, y: Math.PI, z: -0.05 },
-          fingersR: 0.7, fingersL: 0.55
+          rootY: bob + hop + crouch, rootRX: 0.03, rootRY: yaw, rootRZ: 0,
+          hipY, spineY, spine1Y: spineY * 0.28, spine2Y,
+          headX: 0.12, headZ: yaw * 0.1,
+          R: { down: Rd, fwd: Rf, out: Rout, elbow: Re, wz, wx, sh: 0.16 },
+          L: { down: Ld, fwd: Lf, out: Lout, elbow: Le, wz: 0.72, sh: 0.14 },
+          legLX: lLX, legRX: lRX, legLZ: 0.12, legRZ: -0.08,
+          kneeL: knL, kneeR: knR, footLX: fLX, footRX: fRX, toeL: 0.08, toeR: 0.06,
+          racket: { x: rx, y: Math.PI, z: -0.06 },
+          fingersR: 0.78, fingersL: fL
         };
         break;
       }
       case 'serveReady': {
         const rock = e.rock ?? 0;
         P = {
-          rootY: -0.05 + bob, rootRX: 0.04, rootRY: 0.42, rootRZ: 0,
-          spineY: 0.15, headX: 0.04, headZ: 0,
-          R: { down: 0.78, fwd: 0.18, out: 0.30, elbow: 1.05, wz: 1.35, wx: -0.12, sh: 0.14 },
-          L: { down: 0.68, fwd: 0.55, out: 0.14, elbow: 0.45, wz: 0.2 },
-          legLX: 0.32, legRX: -0.4, legLZ: 0.1, legRZ: -0.1,
-          kneeL: 0.55, kneeR: 0.65,
-          racket: { x: -0.2, y: Math.PI, z: 0.1 },
-          fingersR: 0.6, fingersL: 0.2
+          rootY: -0.06 + bob, rootRX: 0.05, rootRY: 0.4, rootRZ: 0,
+          hipY: 0.2, spineY: 0.18, spine1Y: 0.08, spine2Y: 0.06,
+          headX: 0.05, headZ: 0,
+          R: { down: 0.74, fwd: 0.26, out: 0.30, elbow: 1.02, wz: 1.32, wx: -0.1, sh: 0.14 },
+          L: { down: 0.62, fwd: 0.62, out: 0.14, elbow: 0.42, wz: 0.22, sh: 0.1 },
+          legLX: 0.28, legRX: -0.48, legLZ: 0.1, legRZ: -0.12,
+          kneeL: 0.5, kneeR: 0.72,
+          footLX: 0.14, footRX: 0.28, toeL: 0.04, toeR: 0.1,
+          racket: { x: -0.18, y: Math.PI, z: 0.08 },
+          fingersR: 0.62, fingersL: 0.28
         };
         root.position.z = rock;
         break;
@@ -1088,69 +1202,105 @@ export function createPlayer(s, opts = {}) {
       case 'serveToss': {
         const kUp = e.kUp ?? 0;
         const kTrophy = e.kTrophy ?? 0;
+        const drop = kTrophy < 0.22 ? kTrophy / 0.22 : 1;
+        const rise = kTrophy < 0.22 ? 0 : (kTrophy - 0.22) / 0.78;
+        const Rd = kTrophy < 0.22 ? lerp(0.74, 0.96, drop) : lerp(0.96, -0.68, rise);
+        const Rf = kTrophy < 0.22 ? lerp(0.26, 0.06, drop) : lerp(0.06, -0.42, rise);
         P = {
-          rootY: lerp(-0.05, -0.1, kTrophy),
-          rootRX: lerp(0.04, -0.08, kTrophy),
-          rootRY: lerp(0.42, 0.62, kTrophy),
+          rootY: lerp(-0.06, -0.14, kTrophy),
+          rootRX: lerp(0.05, -0.1, kTrophy),
+          rootRY: lerp(0.4, 0.66, kTrophy),
           rootRZ: 0,
-          spineY: lerp(0.15, 0.28, kTrophy),
-          headX: lerp(0.04, 0.45, kUp),
+          hipY: lerp(0.2, 0.38, kTrophy),
+          spineY: lerp(0.18, 0.32, kTrophy),
+          spine1Y: lerp(0.08, 0.14, kTrophy),
+          spine2Y: lerp(0.06, 0.12, kTrophy),
+          headX: lerp(0.05, 0.48, kUp),
           headZ: Math.sin(kUp * 9) * 0.02,
-          // Toss arm goes straight up, away from the head (out > 0).
-          L: { down: lerp(0.68, -0.85, kUp), fwd: lerp(0.55, 0.15, kUp), out: lerp(0.14, 0.28, kUp), elbow: lerp(0.45, 0.12, kUp), wz: 0.15 },
-          // Trophy: upper arm raised, racket head UP and behind the hitting shoulder (not a backscratch to the court).
-          R: { down: lerp(0.78, -0.62, kTrophy), fwd: lerp(0.18, -0.38, kTrophy), out: lerp(0.30, 0.36, kTrophy), elbow: lerp(1.05, 0.75, kTrophy), wz: lerp(1.35, 0.22, kTrophy), wx: lerp(-0.12, 0.12, kTrophy), sh: lerp(0.14, 0.28, kTrophy) },
-          legLX: lerp(0.32, 0.5, kTrophy), legRX: lerp(-0.4, -0.55, kTrophy),
-          legLZ: 0.1, legRZ: -0.1,
-          kneeL: lerp(0.55, 0.75, kTrophy), kneeR: lerp(0.65, 0.85, kTrophy),
-          racket: { x: lerp(-0.2, 0.35, kTrophy), y: Math.PI, z: lerp(0.1, 0.2, kTrophy) },
-          fingersR: 0.65, fingersL: 0.25
+          L: { down: lerp(0.62, -0.92, kUp), fwd: lerp(0.62, 0.12, kUp), out: lerp(0.14, 0.32, kUp), elbow: lerp(0.42, 0.1, kUp), wz: 0.15, sh: 0.12 },
+          R: {
+            down: Rd, fwd: Rf, out: lerp(0.30, 0.38, rise),
+            elbow: lerp(1.02, 0.72, rise), wz: lerp(1.32, 0.2, rise),
+            wx: lerp(-0.1, 0.14, rise), sh: lerp(0.14, 0.3, rise)
+          },
+          legLX: lerp(0.28, 0.52, kTrophy), legRX: lerp(-0.48, -0.58, kTrophy),
+          legLZ: 0.1, legRZ: -0.12,
+          kneeL: lerp(0.5, 0.82, kTrophy), kneeR: lerp(0.72, 0.92, kTrophy),
+          footLX: lerp(0.14, 0.22, kTrophy), footRX: lerp(0.28, 0.38, kTrophy),
+          toeL: 0.06, toeR: 0.16,
+          racket: { x: lerp(-0.18, 0.38, rise), y: Math.PI, z: lerp(0.08, 0.22, rise) },
+          fingersR: 0.68, fingersL: 0.22
         };
         break;
       }
       case 'serveStrike': {
-        const w = easeInCubic(k);
         const freeze = e.freeze ?? 0;
+        const legE = easeOutCubic(Math.min(1, k * 1.5));
+        const hipE = delayEase(k, 0.08, easeOutCubic);
+        const armE = delayEase(k, 0.16, easeInCubic);
+        const pronE = delayEase(k, 0.4, easeInCubic);
         P = {
-          rootY: lerp(-0.1, 0.12, w),
-          rootRX: lerp(-0.08, 0.06, w),
-          rootRY: lerp(0.62, -0.35, w),
+          rootY: lerp(-0.14, 0.24, legE),
+          rootRX: lerp(-0.1, 0.08, legE),
+          rootRY: lerp(0.66, -0.4, hipE),
           rootRZ: 0,
-          spineY: lerp(0.28, -0.15, w),
-          headX: lerp(0.45, 0.12, w),
+          hipY: lerp(0.38, -0.22, hipE),
+          spineY: lerp(0.32, -0.18, hipE),
+          spine1Y: lerp(0.14, -0.08, hipE),
+          spine2Y: lerp(0.12, -0.1, hipE),
+          headX: lerp(0.48, 0.1, armE),
           headZ: 0,
-          L: { down: w < 0.4 ? -0.85 : lerp(-0.85, 0.35, (w - 0.4) / 0.6), fwd: 0.15, out: 0.26, elbow: 0.2, wz: 0.15 },
-          // Overhead whip: arm goes UP and FORWARD on the right side.
-          R: { down: lerp(-0.62, -0.88, w), fwd: lerp(-0.38, 0.5, w), out: lerp(0.36, 0.40, w), elbow: lerp(0.75, 0.18, w), wz: lerp(0.22, 0.35, w), wx: lerp(0.12, -0.05, w), sh: lerp(0.28, 0.16, w) },
-          legLX: lerp(0.5, 0.08, w), legRX: lerp(-0.55, -0.08, w),
+          L: {
+            down: k < 0.38 ? -0.92 : lerp(-0.92, 0.32, (k - 0.38) / 0.62),
+            fwd: 0.12, out: 0.28, elbow: 0.16, wz: 0.15, sh: 0.1
+          },
+          R: {
+            down: lerp(-0.68, -0.92, armE), fwd: lerp(-0.42, 0.58, armE),
+            out: lerp(0.38, 0.42, armE), elbow: lerp(0.72, 0.14, armE),
+            wz: lerp(0.2, 0.38, pronE), wx: lerp(0.14, -0.08, pronE), sh: lerp(0.3, 0.14, armE)
+          },
+          legLX: lerp(0.52, 0.06, legE), legRX: lerp(-0.58, -0.06, legE),
           legLZ: 0.1, legRZ: -0.1,
-          kneeL: lerp(0.75, 0.2, w), kneeR: lerp(0.85, 0.2, w),
-          racket: { x: lerp(0.35, -0.15, w), y: Math.PI, z: freeze > 0 ? lerp(0.2, 0.55, easeOutCubic(1 - freeze)) : lerp(0.55, 0.1, w) },
-          fingersR: 0.75, fingersL: 0.2
+          kneeL: lerp(0.82, 0.16, legE), kneeR: lerp(0.92, 0.18, legE),
+          footLX: lerp(0.22, 0.08, legE), footRX: lerp(0.38, 0.12, legE),
+          toeL: lerp(0.06, 0.02, legE), toeR: lerp(0.16, 0.04, legE),
+          racket: {
+            x: lerp(0.38, -0.16, armE), y: Math.PI,
+            z: freeze > 0 ? lerp(0.22, 0.62, easeOutCubic(1 - freeze)) : lerp(0.22, 0.7, pronE)
+          },
+          fingersR: 0.78, fingersL: 0.18
         };
         break;
       }
       case 'serveFollow': {
         const u = easeInOutCubic(k);
+        const land = easeOutCubic(Math.min(1, k * 2.2));
         const happy = e.happy ? Math.abs(Math.sin(k * Math.PI * 2)) * 0.08 * (1 - k * 0.5) : 0;
         P = {
-          rootY: lerp(0.12, 0, u) + happy,
-          rootRX: lerp(0.06, 0, u),
-          rootRY: lerp(-0.35, 0, u),
+          rootY: lerp(0.24, 0, land) + happy,
+          rootRX: lerp(0.08, 0.04, u),
+          rootRY: lerp(-0.4, 0, u),
           rootRZ: 0,
-          spineY: lerp(-0.15, 0, u),
-          headX: lerp(0.12, 0, u),
+          hipY: lerp(-0.22, 0, u),
+          spineY: lerp(-0.18, 0.04, u),
+          spine1Y: lerp(-0.08, 0, u),
+          spine2Y: lerp(-0.1, 0, u),
+          headX: lerp(0.1, 0.04, u),
           headZ: e.happy ? Math.sin(k * 12) * 0.08 : 0,
-          L: { down: lerp(0.35, 0.66, u), fwd: lerp(0.15, 0.48, u), out: 0.14, elbow: lerp(0.2, 0.72, u), wz: 0.3 },
-          // Recover to the ready on the RIGHT — never wrap the frame through the torso.
-          R: { down: lerp(-0.88, 0.70, u), fwd: lerp(0.5, 0.32, u), out: lerp(0.40, 0.28, u), elbow: lerp(0.18, 0.95, u), wz: lerp(0.35, 1.22, u), wx: lerp(-0.05, -0.12, u), sh: 0.16 },
-          legLX: lerp(0.08, 0.35, u), legRX: lerp(-0.08, -0.45, u),
+          L: { down: lerp(0.32, 0.66, u), fwd: lerp(0.12, 0.48, u), out: 0.14, elbow: lerp(0.16, 0.72, u), wz: 0.3, sh: 0.1 },
+          R: {
+            down: lerp(-0.92, 0.70, u), fwd: lerp(0.58, 0.32, u), out: lerp(0.42, 0.28, u),
+            elbow: lerp(0.14, 0.95, u), wz: lerp(0.38, 1.22, u), wx: lerp(-0.08, -0.12, u), sh: 0.16
+          },
+          legLX: lerp(0.06, 0.22, u), legRX: lerp(-0.06, -0.28, u),
           legLZ: 0.1, legRZ: -0.1,
-          kneeL: lerp(0.2, 0.5, u), kneeR: lerp(0.2, 0.7, u),
-          racket: { x: lerp(-0.15, -0.18, u), y: Math.PI, z: lerp(0.1, 0.08, u) },
+          kneeL: lerp(0.16, 0.42, land), kneeR: lerp(0.18, 0.48, u),
+          footLX: lerp(0.08, 0.16, land), footRX: lerp(0.12, 0.16, u),
+          toeL: 0.04, toeR: 0.04,
+          racket: { x: lerp(-0.16, -0.18, u), y: Math.PI, z: lerp(0.12, 0.06, u) },
           fingersR: 0.55, fingersL: 0.12
         };
-        root.position.z = -0.28 * Math.sin(u * Math.PI);
+        root.position.z = -0.32 * Math.sin(u * Math.PI);
         break;
       }
       default: {
@@ -1170,7 +1320,7 @@ export function createPlayer(s, opts = {}) {
     root.position.y = P.rootY;
     if (name !== 'serveReady' && name !== 'serveFollow') root.position.z = 0;
     root.rotation.set(P.rootRX, P.rootRY, P.rootRZ);
-    if (spine) spine.rotation.y = P.spineY;
+    poseTorso(P);
     if (torso && torso.scale) torso.scale.y = e.breathe ?? 1;
     headGroup.rotation.set(P.headX, 0, P.headZ);
     poseArm(1, P.R);
@@ -1268,12 +1418,12 @@ export function createPlayer(s, opts = {}) {
       stroke.t += dt;
       strokeK = Math.min(1, stroke.t / stroke.dur);
       applyTennisPose(stroke.type, strokeK, {
-        bob: bob0, hop: splitHop0, time, intensity, breathe, vx: vel.x, walk: walkCycle
+        bob: bob0, hop: splitHop0, time, intensity, breathe, vx: vel.x, vz: vel.z, walk: walkCycle
       });
       if (strokeK >= 1) stroke = null;
     } else {
       applyTennisPose(intensity > 0.08 ? 'run' : 'idle', 0, {
-        bob: bob0, hop: splitHop0, time, intensity, breathe, vx: vel.x,
+        bob: bob0, hop: splitHop0, time, intensity, breathe, vx: vel.x, vz: vel.z,
         walk: walkCycle, split: splitT > 0
       });
     }
@@ -1528,10 +1678,11 @@ export function createOpponentAI(opp, ball) {
 // TODO (game): real score 15/30/40, AI serves, sound hooks
 // ============================================================
 export const SERVE_TIMING = {
-  windup: 0.15,  // arm lift with ball in hand before release (total serve ~1.5s)
-  strike: 0.16,  // explosive whip (first 0.08s = frozen impact frame)
-  follow: 0.70,  // follow-through + recover
+  windup: 0.35,  // toss-arm lift with ball in hand before release
+  strike: 0.18,  // explosive whip (first 0.08s = frozen impact frame)
+  follow: 0.75,  // land + recover into ready
   freeze: 0.08,  // 80ms impact frame (ball held at contact)
+  trophyHold: 0.10, // hold trophy pose at toss apex
   slowmo2nd: 0.85 // 2nd serve animation speed factor
 };
 // Hard court-lock wall: whole backfield (x +-9, z 12.12..17) is free during serve
@@ -1896,7 +2047,15 @@ export function createServeController(pl, bl, s) {
       tossPos.y += tossVel * dt;
       bl.mesh.position.copy(tossPos);
       bl.velocity.set(0, 0, 0);
-      poseToss(Math.min(1, 0.45 + 0.55 * easeOutCubic(tf / apexT)), easeInOutCubic((tf - (apexT - 0.15)) / 0.15));
+      const trophyStart = Math.max(0.05, apexT * 0.32);
+      const trophyHold = SERVE_TIMING.trophyHold;
+      const trophyRise = Math.max(0.08, apexT - trophyHold - trophyStart);
+      const kTrophy = tf <= trophyStart
+        ? 0
+        : tf >= apexT - trophyHold
+          ? 1
+          : easeInOutCubic((tf - trophyStart) / trophyRise);
+      poseToss(Math.min(1, 0.45 + 0.55 * easeOutCubic(tf / Math.max(0.05, apexT))), kTrophy);
       // Timing-bar marker: 0 (hand) -> 1 (apex)
       if (mark) {
         const m = THREE.MathUtils.clamp((tossPos.y - handY) / Math.max(0.001, apexY - handY), 0, 1.05);
