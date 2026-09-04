@@ -1,4 +1,4 @@
-﻿# 🎾 Muse Tennis 3D
+# 🎾 Muse Tennis 3D
 
 Ein interaktives 3D-Tennisspiel direkt im Browser, entwickelt mit **Three.js** im authentischen US Open Court-Design. Mit vollständigem Ballwechsel-System, Aufschlag-Mechanik mit Timing-Bar, Ballphysik, automatischer Vorhand-/Rückhand-Auswahl, intelligenter Gegner-KI und offiziellem Tennis-Zählsystem.
 
@@ -37,18 +37,18 @@ Ein interaktives 3D-Tennisspiel direkt im Browser, entwickelt mit **Three.js** i
 
 ## 📁 Projektstruktur
 
-`
+```text
 muse-tennis/
 ├── index.html       # Gesamtes Spiel (Three.js WebGL, Spiellogik, UI, Physics)
 ├── .gitignore       # Git Ignore
 └── README.md        # Projektdokumentation & Spiellink
-`
+```
 
 ---
 
 ## 🛠️ Lokale Entwicklung
 
-Einfach die Datei index.html direkt im Browser per Doppelklick oder über einen lokalen Webserver öffnen (z. B. VS Code Live Server oder python -m http.server 8000).
+Einfach die Datei `index.html` direkt im Browser per Doppelklick oder über einen lokalen Webserver öffnen (z. B. VS Code Live Server oder `python -m http.server 8000`).
 
 ---
 
