@@ -517,7 +517,6 @@ function addSeating(root, opts) {
   const lowerRows = low ? 7 : LOWER_ROWS;
   const upperRows = low ? 5 : UPPER_ROWS;
   const step = low ? 0.95 : SEAT_STEP;
-  const seatMat = std(WIMBLEDON.seat, { roughness: 0.58, metalness: 0.04 });
   const aisleMat = std(WIMBLEDON.step, { roughness: 0.86 });
   const railMat = std(0xd8d8d4, { metalness: 0.35, roughness: 0.4 });
   const walkMat = std(WIMBLEDON.concrete, { roughness: 0.82 });
@@ -591,7 +590,7 @@ function addSeating(root, opts) {
   panGeo.translate(0, 0.035, -0.04);
   const backGeo = new THREE.BoxGeometry(0.42, 0.58, 0.07);
   backGeo.translate(0, 0.36, 0.14);
-  const panMesh = new THREE.InstancedMesh(panGeo, seatMat, Math.max(1, poses.length));
+  const panMesh = new THREE.InstancedMesh(panGeo, std(0x1a5c3c, { roughness: 0.62 }), Math.max(1, poses.length));
   const backMesh = new THREE.InstancedMesh(backGeo, std(0x185a3c, { roughness: 0.55 }), Math.max(1, poses.length));
   panMesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
   backMesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
@@ -784,18 +783,22 @@ function addScoreboards(root, dims, texA, texB) {
   const z = -(INNER_HZ + WALL_T + dims.lowerDepth + 0.4);
   const w = 7.8;
   const h = 3.1;
-  const matA = new THREE.MeshBasicMaterial({ map: texA });
-  const matB = new THREE.MeshBasicMaterial({ map: texB });
-  const frame = std(0x0a1628, { roughness: 0.5 });
+  const matA = new THREE.MeshBasicMaterial({ map: texA, side: THREE.DoubleSide });
+  const matB = new THREE.MeshBasicMaterial({ map: texB, side: THREE.DoubleSide });
+  const frame = new THREE.MeshBasicMaterial({ color: 0x0a1628, side: THREE.DoubleSide });
   for (const [x, mat, name] of [[10.2, matA, 'scoreboardR'], [-10.2, matB, 'scoreboardL']]) {
     const board = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
-    board.position.set(x, y, z + 0.4);
+    board.position.set(x, y, z + 0.55);
     board.lookAt(0, 2.5, 0);
     board.name = name;
     root.add(board);
-    const fr = new THREE.Mesh(new THREE.BoxGeometry(w + 0.35, h + 0.35, 0.18), frame);
+    const fr = new THREE.Mesh(
+      new THREE.PlaneGeometry(w + 0.45, h + 0.45),
+      frame
+    );
     fr.position.copy(board.position);
     fr.quaternion.copy(board.quaternion);
+    fr.translateZ(-0.04);
     root.add(fr);
   }
 }
