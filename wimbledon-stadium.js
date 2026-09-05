@@ -5,17 +5,17 @@ import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js'
 export const WIMBLEDON = {
   grassA: 0x4a7c32,
   grassB: 0x5e9140,
-  grassWorn: 0x8a9a4a,
-  grassDirt: 0xb39b5c,
+  grassWorn: 0xc4b07a,
+  grassDirt: 0xa89058,
   runoff: 0x3f6d2c,
-  seat: 0x003820,
-  seatHi: 0x004a2a,
-  wall: 0x003318,
-  wallHi: 0x004422,
+  seat: 0x1f6a45,
+  seatHi: 0x22704a,
+  wall: 0x145232,
+  wallHi: 0x1a5c3c,
   purple: 0x4c1d77,
-  roof: 0xf3f3f0,
-  steel: 0xe6e6e2,
-  rail: 0x3a3d42,
+  roof: 0xf2f1ec,
+  steel: 0xf2f1ec,
+  rail: 0x4a4e54,
   concrete: 0xc6b9a4,
   step: 0xb7aa94,
   tape: 0xffffff,
@@ -28,7 +28,7 @@ const WALL_H = 1.18;
 const WALL_T = 0.42;
 const ROW_DEPTH = 0.82;
 const ROW_RISE = 0.44;
-const SEAT_STEP = 0.50;
+const SEAT_STEP = 0.40;
 const LOWER_ROWS = 16;
 const UPPER_ROWS = 12;
 const WALK_W = 2.55;
@@ -148,22 +148,33 @@ function makeWimbledonBadge() {
   ctx.strokeStyle = '#6b2fa0';
   ctx.stroke();
   ctx.save();
-  ctx.translate(128, 122);
-  ctx.lineWidth = 5;
+  ctx.translate(128, 128);
   ctx.strokeStyle = '#e8d48a';
-  ctx.fillStyle = 'rgba(232,212,138,0.15)';
-  for (const ang of [-0.55, 0.55]) {
+  ctx.fillStyle = 'rgba(232,212,138,0.12)';
+  ctx.lineWidth = 6;
+  ctx.lineCap = 'round';
+  function racket(rot) {
     ctx.save();
-    ctx.rotate(ang);
+    ctx.rotate(rot);
     ctx.beginPath();
-    ctx.moveTo(0, -70);
-    ctx.lineTo(0, 28);
+    ctx.moveTo(0, 18);
+    ctx.lineTo(0, -36);
     ctx.stroke();
     ctx.beginPath();
-    ctx.ellipse(0, 48, 22, 28, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, -58, 18, 24, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-12, -58); ctx.lineTo(12, -58);
+    ctx.moveTo(0, -76); ctx.lineTo(0, -40);
+    ctx.moveTo(-8, -70); ctx.lineTo(-8, -46);
+    ctx.moveTo(8, -70); ctx.lineTo(8, -46);
     ctx.stroke();
     ctx.restore();
   }
+  racket(-0.62);
+  racket(0.62);
   ctx.restore();
   ctx.fillStyle = '#e8d48a';
   ctx.font = 'bold 18px Times New Roman, serif';
@@ -247,7 +258,7 @@ export function makeWimbledonGrassTexture(floorW, floorL, D) {
     for (const bz of [hl, -hl]) {
       const dz = (z - bz) / 1.05;
       const dx = x / 5.6;
-      v = Math.max(v, Math.exp(-(dx * dx + dz * dz)));
+      v = Math.max(v, Math.exp(-(dx * dx + dz * dz)) * 1.35);
       v = Math.max(v, 0.9 * Math.exp(-((x / 1.25) ** 2 + ((z - bz) / 0.62) ** 2)));
       v = Math.max(v, 0.55 * Math.exp(-(((x - hs * 0.55) / 1.7) ** 2 + ((z - bz) / 0.85) ** 2)));
       v = Math.max(v, 0.55 * Math.exp(-(((x + hs * 0.55) / 1.7) ** 2 + ((z - bz) / 0.85) ** 2)));
@@ -268,18 +279,18 @@ export function makeWimbledonGrassTexture(floorW, floorL, D) {
       const x = (px / w - 0.5) * floorW;
       const z = (0.5 - py / h) * floorL;
       const n = seeded(px * 0.37 + py * 1.91) * 0.16 + seeded(px * 2.1 - py * 0.7) * 0.08;
-      const stripe = (Math.floor((x + 40) / stripeW) & 1) === 0;
-      let r = stripe ? 68 : 82;
-      let g = stripe ? 122 : 138;
-      let b = stripe ? 44 : 52;
+      const stripeMix = 0.5 + 0.5 * Math.sin((x + 40) * Math.PI / stripeW);
+      let r = 70 + stripeMix * 16;
+      let g = 124 + stripeMix * 18;
+      let b = 46 + stripeMix * 10;
       if (Math.abs(x) > hw + 0.08 || Math.abs(z) > hl + 0.08) {
         r -= 10; g -= 8; b -= 6;
       }
       const wv = wear(x, z);
       if (wv > 0.04) {
-        r = r + (168 - r) * wv;
-        g = g + (152 - g) * wv * 0.85;
-        b = b + (72 - b) * wv * 0.7;
+        r = r + (196 - r) * wv;
+        g = g + (168 - g) * wv;
+        b = b + (96 - b) * wv * 0.85;
       }
       r = Math.max(0, Math.min(255, r + n * 40));
       g = Math.max(0, Math.min(255, g + n * 36));
@@ -305,11 +316,11 @@ function makeScoreboardTexture(state) {
   c.width = 1024;
   c.height = 420;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = '#0b0f0c';
+  ctx.fillStyle = '#0a1628';
   ctx.fillRect(0, 0, 1024, 420);
-  ctx.fillStyle = '#003820';
+  ctx.fillStyle = '#12243c';
   ctx.fillRect(0, 0, 1024, 48);
-  ctx.fillStyle = '#c9a227';
+  ctx.fillStyle = '#e4c44a';
   ctx.font = 'bold 28px Arial, sans-serif';
   ctx.textAlign = 'left';
   ctx.fillText('THE CHAMPIONSHIPS  ·  CENTRE COURT', 28, 34);
@@ -483,7 +494,7 @@ function addGrassFloor(courtGroup, D) {
 function addInnerWalls(root, badgeTex) {
   const wallMat = std(WIMBLEDON.wall, { roughness: 0.78 });
   const capMat = std(WIMBLEDON.purple, { roughness: 0.55, metalness: 0.15 });
-  const walkMat = std(0x0d3a24, { roughness: 0.7 });
+  const walkMat = std(0x1a5c3c, { roughness: 0.72 });
 
   const h = WALL_H;
   const t = WALL_T;
@@ -493,10 +504,10 @@ function addInnerWalls(root, badgeTex) {
   box(root, INNER_HX * 2 + t * 2, h, t, 0, h / 2, -hz, wallMat, { name: 'wallS' });
   box(root, t, h, INNER_HZ * 2, hx, h / 2, 0, wallMat, { name: 'wallE' });
   box(root, t, h, INNER_HZ * 2, -hx, h / 2, 0, wallMat, { name: 'wallW' });
-  box(root, INNER_HX * 2 + t * 2, 0.07, t + 0.04, 0, h + 0.02, hz, capMat);
-  box(root, INNER_HX * 2 + t * 2, 0.07, t + 0.04, 0, h + 0.02, -hz, capMat);
-  box(root, t + 0.04, 0.07, INNER_HZ * 2, hx, h + 0.02, 0, capMat);
-  box(root, t + 0.04, 0.07, INNER_HZ * 2, -hx, h + 0.02, 0, capMat);
+  box(root, INNER_HX * 2 + t * 2, 0.06, t + 0.04, 0, h + 0.02, hz, capMat);
+  box(root, INNER_HX * 2 + t * 2, 0.06, t + 0.04, 0, h + 0.02, -hz, capMat);
+  box(root, t + 0.04, 0.06, INNER_HZ * 2, hx, h + 0.02, 0, capMat);
+  box(root, t + 0.04, 0.06, INNER_HZ * 2, -hx, h + 0.02, 0, capMat);
 
   box(root, INNER_HX * 2, 0.06, 0.95, 0, 0.03, INNER_HZ - 0.48, walkMat, { cast: false });
   box(root, INNER_HX * 2, 0.06, 0.95, 0, 0.03, -(INNER_HZ - 0.48), walkMat, { cast: false });
@@ -505,7 +516,7 @@ function addInnerWalls(root, badgeTex) {
 
   const logoMat = new THREE.MeshBasicMaterial({ map: badgeTex, transparent: true });
   for (const z of [INNER_HZ - 0.02, -(INNER_HZ - 0.02)]) {
-    const logo = new THREE.Mesh(new THREE.CircleGeometry(0.62, 32), logoMat);
+    const logo = new THREE.Mesh(new THREE.CircleGeometry(0.55, 32), logoMat);
     logo.position.set(0, 0.72, z > 0 ? z - 0.22 : z + 0.22);
     logo.rotation.y = z > 0 ? Math.PI : 0;
     root.add(logo);
@@ -518,10 +529,11 @@ function addSeating(root, opts) {
   const upperRows = low ? 5 : UPPER_ROWS;
   const step = low ? 0.95 : SEAT_STEP;
   const seatGeo = makeSeatGeometry();
-  const seatMat = std(WIMBLEDON.seat, { roughness: 0.62, metalness: 0.08 });
-  const terraceMat = std(0x012a18, { roughness: 0.9 });
+  const seatMat = std(WIMBLEDON.seat, { roughness: 0.58, metalness: 0.04 });
+  const terraceMat = std(0x145232, { roughness: 0.9 });
   const aisleMat = std(WIMBLEDON.step, { roughness: 0.86 });
   const railMat = std(0xd8d8d4, { metalness: 0.35, roughness: 0.4 });
+  const walkMat = std(WIMBLEDON.concrete, { roughness: 0.82 });
 
   const poses = [];
   const terraces = new THREE.Group();
@@ -535,20 +547,18 @@ function addSeating(root, opts) {
     box(terraces, ROW_DEPTH + 0.05, 0.16, hz * 2, -hx, y - 0.05, 0, terraceMat, { cast: false });
 
     roundedRectLoop(hx, hz, radius, step, (x, z, ang, i) => {
-      const aisle = (i % 16) < 2;
+      const aisle = (i % 12) < 2;
       if (aisle) {
-        if (!low && (i % 16) === 0 && row % 2 === 0) {
-          const inward = new THREE.Vector3(-x, 0, -z).normalize();
-          box(
-            terraces, 0.72, 0.08, ROW_DEPTH * 0.9,
-            x + inward.x * 0.1, y - 0.02, z + inward.z * 0.1,
-            aisleMat, { cast: false, ry: Math.atan2(x, z) }
-          );
-        }
+        const inward = new THREE.Vector3(-x, 0, -z).normalize();
+        box(
+          terraces, 0.95, 0.12, ROW_DEPTH * 0.95,
+          x + inward.x * 0.05, y - 0.04, z + inward.z * 0.05,
+          aisleMat, { cast: false, ry: Math.atan2(x, z) }
+        );
         return;
       }
-      if (isLower && z < -24 && Math.abs(x) < 6.8 && row >= 8) return;
-      if (!isLower && z < -28 && Math.abs(x) < 7.5 && row < 6) return;
+      if (isLower && z < -24 && Math.abs(x) < 7.2 && row >= 7) return;
+      if (!isLower && z < -29 && Math.abs(x) < 7.6 && row < 7) return;
       poses.push({ x, y, z, ang });
     });
   }
@@ -564,10 +574,10 @@ function addSeating(root, opts) {
   const walkY = WALL_H + 0.12 + lowerRows * ROW_RISE + 0.2;
   const walkHx = INNER_HX + WALL_T + lowerDepth + WALK_W * 0.5;
   const walkHz = INNER_HZ + WALL_T + lowerDepth + WALK_W * 0.5;
-  box(root, walkHx * 2 + 1.2, 0.18, WALK_W, 0, walkY, walkHz, std(0x1a1c1e, { roughness: 0.8 }), { cast: false });
-  box(root, walkHx * 2 + 1.2, 0.18, WALK_W, 0, walkY, -walkHz, std(0x1a1c1e, { roughness: 0.8 }), { cast: false });
-  box(root, WALK_W, 0.18, walkHz * 2, walkHx, walkY, 0, std(0x1a1c1e, { roughness: 0.8 }), { cast: false });
-  box(root, WALK_W, 0.18, walkHz * 2, -walkHx, walkY, 0, std(0x1a1c1e, { roughness: 0.8 }), { cast: false });
+  box(root, walkHx * 2 + 1.2, 0.18, WALK_W, 0, walkY, walkHz, walkMat, { cast: false });
+  box(root, walkHx * 2 + 1.2, 0.18, WALK_W, 0, walkY, -walkHz, walkMat, { cast: false });
+  box(root, WALK_W, 0.18, walkHz * 2, walkHx, walkY, 0, walkMat, { cast: false });
+  box(root, WALK_W, 0.18, walkHz * 2, -walkHx, walkY, 0, walkMat, { cast: false });
 
   for (let i = 0; i < 18; i++) {
     const t = (i / 18) * Math.PI * 2;
@@ -598,7 +608,7 @@ function addSeating(root, opts) {
   const inst = new THREE.InstancedMesh(seatGeo, seatMat, Math.max(1, poses.length));
   inst.instanceMatrix.setUsage(THREE.StaticDrawUsage);
   inst.castShadow = false;
-  inst.receiveShadow = true;
+  inst.receiveShadow = false;
   inst.name = 'seats';
   const dummy = new THREE.Object3D();
   for (let i = 0; i < poses.length; i++) {
@@ -622,7 +632,7 @@ function addSeating(root, opts) {
 }
 
 function addBowlShell(root, dims) {
-  const shell = std(0x002616, { roughness: 0.92 });
+  const shell = std(0x0d3a28, { roughness: 0.92 });
   const h = dims.upperTopY + 1.2;
   box(root, dims.outerHX * 2 + 2.4, h, 1.4, 0, h / 2, dims.outerHZ + 0.5, shell, { cast: false });
   box(root, dims.outerHX * 2 + 2.4, h, 1.4, 0, h / 2, -(dims.outerHZ + 0.5), shell, { cast: false });
@@ -632,166 +642,169 @@ function addBowlShell(root, dims) {
 
 function addRoof(root, dims) {
   const { outerHX, outerHZ, upperTopY } = dims;
-  const roofY = upperTopY + 6.2;
-  const openHX = 16.5;
-  const openHZ = 21.5;
-  const steel = std(WIMBLEDON.steel, { metalness: 0.55, roughness: 0.32 });
-  const white = std(WIMBLEDON.roof, { metalness: 0.22, roughness: 0.45 });
+  const roofY = upperTopY + 5.4;
+  const openHX = 18.5;
+  const openHZ = 28.0;
+  const steel = std(WIMBLEDON.steel, { metalness: 0.22, roughness: 0.4 });
+  const white = std(WIMBLEDON.roof, { metalness: 0.18, roughness: 0.42 });
   const fabricTex = makeFabricTexture();
   const fabric = new THREE.MeshStandardMaterial({
     map: fabricTex,
-    color: 0xf4f4f1,
-    roughness: 0.78,
+    color: 0xf4f2ec,
+    roughness: 0.82,
     metalness: 0.02,
+    transparent: true,
+    opacity: 0.88,
     side: THREE.DoubleSide
   });
-  const rail = std(WIMBLEDON.rail, { metalness: 0.6, roughness: 0.4 });
+  const rail = std(WIMBLEDON.rail, { metalness: 0.55, roughness: 0.42 });
 
   const cover = new THREE.Group();
   cover.name = 'roofCover';
-  const ringH = 0.45;
-  const coverY = roofY - 0.8;
-  box(cover, outerHX * 2 + 4, ringH, outerHZ - openHZ, 0, coverY, (outerHZ + openHZ) / 2 + 0.2, fabric, { cast: false });
-  box(cover, outerHX * 2 + 4, ringH, outerHZ - openHZ, 0, coverY, -(outerHZ + openHZ) / 2 - 0.2, fabric, { cast: false });
-  const sideW = outerHX - openHX + 2;
+  const ringH = 0.38;
+  const coverY = roofY - 0.55;
+  const endDepth = Math.max(1.2, outerHZ - openHZ + 1.5);
+  box(cover, outerHX * 2 + 4, ringH, endDepth, 0, coverY, (outerHZ + openHZ) / 2 + 0.4, fabric, { cast: false });
+  box(cover, outerHX * 2 + 4, ringH, endDepth, 0, coverY, -((outerHZ + openHZ) / 2 + 0.4), fabric, { cast: false });
+  const sideW = Math.max(1.2, outerHX - openHX + 2.2);
   box(cover, sideW, ringH, openHZ * 2, (outerHX + openHX) / 2 + 1, coverY, 0, fabric, { cast: false });
   box(cover, sideW, ringH, openHZ * 2, -((outerHX + openHX) / 2 + 1), coverY, 0, fabric, { cast: false });
   root.add(cover);
 
   function beam(x0, y0, z0, x1, y1, z1, r) {
-    const dx = x1 - x0;
-    const dy = y1 - y0;
-    const dz = z1 - z0;
-    const len = Math.hypot(dx, dy, dz);
+    const len = Math.hypot(x1 - x0, y1 - y0, z1 - z0);
     const m = new THREE.Mesh(new THREE.BoxGeometry(r, r, len), steel);
     m.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
     m.lookAt(x1, y1, z1);
-    m.castShadow = true;
+    m.castShadow = false;
     root.add(m);
   }
 
-  const lipY = roofY + 1.8;
+  const peak = roofY + 4.6;
   for (let s = -1; s <= 1; s += 2) {
-    for (let i = -5; i <= 5; i++) {
-      const z = i * 3.9;
+    for (let i = -7; i <= 7; i++) {
+      const z = i * 3.55;
       const xLip = s * openHX;
-      beam(xLip, roofY - 0.2, z - 1.6, xLip + s * 3.4, lipY, z, 0.28);
-      beam(xLip, roofY - 0.2, z + 1.6, xLip + s * 3.4, lipY, z, 0.28);
-      beam(xLip + s * 3.4, lipY, z, xLip + s * (outerHX - openHX) * 0.35, roofY + 0.4, z, 0.22);
+      beam(xLip, roofY, z - 1.55, xLip + s * 4.2, peak, z, 0.32);
+      beam(xLip, roofY, z + 1.55, xLip + s * 4.2, peak, z, 0.32);
+      beam(xLip + s * 4.2, peak, z, xLip + s * (sideW * 0.55 + 2), roofY + 0.6, z, 0.24);
+      beam(xLip, roofY, z - 1.55, xLip, roofY, z + 1.55, 0.22);
     }
   }
   for (let s = -1; s <= 1; s += 2) {
-    for (let i = -3; i <= 3; i++) {
-      const x = i * 4.4;
+    for (let i = -4; i <= 4; i++) {
+      const x = i * 4.0;
       const zLip = s * openHZ;
-      beam(x - 1.5, roofY - 0.2, zLip, x, lipY, zLip + s * 3.2, 0.28);
-      beam(x + 1.5, roofY - 0.2, zLip, x, lipY, zLip + s * 3.2, 0.28);
+      beam(x - 1.6, roofY, zLip, x, peak - 0.4, zLip + s * 3.6, 0.3);
+      beam(x + 1.6, roofY, zLip, x, peak - 0.4, zLip + s * 3.6, 0.3);
     }
   }
 
-  box(root, openHX * 2 + 1.2, 0.22, 0.55, 0, roofY + 0.15, openHZ, white);
-  box(root, openHX * 2 + 1.2, 0.22, 0.55, 0, roofY + 0.15, -openHZ, white);
-  box(root, 0.55, 0.22, openHZ * 2 + 1.2, openHX, roofY + 0.15, 0, white);
-  box(root, 0.55, 0.22, openHZ * 2 + 1.2, -openHX, roofY + 0.15, 0, white);
+  box(root, openHX * 2 + 1.4, 0.28, 0.62, 0, roofY + 0.2, openHZ, white, { cast: false });
+  box(root, openHX * 2 + 1.4, 0.28, 0.62, 0, roofY + 0.2, -openHZ, white, { cast: false });
+  box(root, 0.62, 0.28, openHZ * 2 + 1.4, openHX, roofY + 0.2, 0, white, { cast: false });
+  box(root, 0.62, 0.28, openHZ * 2 + 1.4, -openHX, roofY + 0.2, 0, white, { cast: false });
 
   for (const s of [-1, 1]) {
-    box(root, 0.42, 0.28, openHZ * 2 + 6, s * (openHX + 0.6), roofY + 0.55, 0, rail);
-    box(root, 0.18, 0.18, openHZ * 2 + 8, s * (openHX + 1.15), roofY + 0.85, 0, rail);
+    box(root, 0.38, 0.26, openHZ * 2 + 4, s * (openHX + 0.7), roofY + 0.7, 0, rail, { cast: false });
   }
 
   for (const s of [-1, 1]) {
-    for (let k = 0; k < 9; k++) {
-      const z = s * (openHZ + 1.2 + k * 0.42);
-      const fold = new THREE.Mesh(new THREE.BoxGeometry(openHX * 2 - 1, 0.12, 0.38), fabric);
-      fold.position.set(0, roofY - 0.15 - k * 0.05, z);
-      fold.rotation.x = s * 0.35;
+    for (let k = 0; k < 14; k++) {
+      const z = s * (openHZ + 0.9 + k * 0.28);
+      const fold = new THREE.Mesh(new THREE.BoxGeometry(openHX * 2 - 0.8, 0.1, 0.24), fabric);
+      fold.position.set(0, roofY - 0.1 - k * 0.04, z);
+      fold.rotation.x = s * 0.42;
+      fold.castShadow = false;
       root.add(fold);
     }
   }
 
   const lightMat = new THREE.MeshStandardMaterial({
-    color: 0xf2f0e4, emissive: 0xe8ddb0, emissiveIntensity: 0.55, roughness: 0.4
+    color: 0xf7f3e4, emissive: 0xe8ddb0, emissiveIntensity: 0.7, roughness: 0.4
   });
   for (let s = -1; s <= 1; s += 2) {
-    for (let i = -4; i <= 4; i++) {
-      box(root, 1.35, 0.22, 0.55, s * (openHX - 0.9), roofY - 0.55, i * 4.4, lightMat, { cast: false });
+    for (let i = -5; i <= 5; i++) {
+      box(root, 1.5, 0.2, 0.5, s * (openHX - 0.8), roofY - 0.45, i * 4.2, lightMat, { cast: false });
     }
   }
 
-  const fascia = std(0xf0f0ec, { metalness: 0.2, roughness: 0.5 });
-  box(root, outerHX * 2 + 5, 1.8, 0.7, 0, roofY + 2.4, outerHZ + 1.6, fascia);
-  box(root, outerHX * 2 + 5, 1.8, 0.7, 0, roofY + 2.4, -(outerHZ + 1.6), fascia);
-  box(root, 0.7, 1.8, outerHZ * 2 + 5, outerHX + 1.6, roofY + 2.4, 0, fascia);
-  box(root, 0.7, 1.8, outerHZ * 2 + 5, -(outerHX + 1.6), roofY + 2.4, 0, fascia);
+  const fascia = std(0xf0f0ec, { metalness: 0.18, roughness: 0.5 });
+  box(root, outerHX * 2 + 5, 1.6, 0.7, 0, roofY + 2.2, outerHZ + 1.6, fascia, { cast: false });
+  box(root, outerHX * 2 + 5, 1.6, 0.7, 0, roofY + 2.2, -(outerHZ + 1.6), fascia, { cast: false });
+  box(root, 0.7, 1.6, outerHZ * 2 + 5, outerHX + 1.6, roofY + 2.2, 0, fascia, { cast: false });
+  box(root, 0.7, 1.6, outerHZ * 2 + 5, -(outerHX + 1.6), roofY + 2.2, 0, fascia, { cast: false });
 
   return { roofY, openHX, openHZ };
 }
 
 function addRoyalBox(root, dims, jackTex, flagTex, badgeTex) {
-  const z = -(INNER_HZ + WALL_T + 6.4);
-  const y = WALL_H + 5.6;
-  const wood = std(0x1a3d22);
-  const cream = std(0xe8e2d4, { roughness: 0.6 });
-  box(root, 14.5, 4.6, 3.4, 0, y, z, wood, { name: 'royalBox' });
-  box(root, 14.8, 0.18, 1.6, 0, y + 1.1, z + 1.55, cream);
-  box(root, 13.6, 0.9, 0.2, 0, y + 2.55, z + 1.72, std(WIMBLEDON.purple));
+  const z = -(INNER_HZ + WALL_T + 5.8);
+  const y = 8.2;
+  const wood = std(0x2a5a38, { roughness: 0.7 });
+  const cream = std(0xe8e2d4, { roughness: 0.58 });
+  box(root, 15.4, 5.2, 3.8, 0, y, z, wood, { name: 'royalBox' });
+  box(root, 15.8, 0.22, 2.2, 0, y + 1.35, z + 1.85, cream);
+  box(root, 14.2, 0.9, 0.18, 0, y + 2.7, z + 1.95, std(WIMBLEDON.purple));
+  box(root, 15.6, 0.08, 0.12, 0, y + 1.48, z + 2.85, cream);
 
-  const flowerColors = [0xd14b7a, 0xe8e8e8, 0xc42b3a, 0x6b2fa0, 0xf2c14e];
-  for (let i = 0; i < 26; i++) {
-    const fx = -6.4 + i * 0.5;
-    const col = flowerColors[i % flowerColors.length];
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6), std(col, { roughness: 0.5 }));
-    head.position.set(fx, y + 1.32, z + 1.55);
-    root.add(head);
+  const flowerColors = [0xc42b3a, 0xd14b7a, 0xe8e8e8, 0xc42b3a, 0xd14b7a];
+  for (let i = 0; i < 32; i++) {
+    const fx = -7.4 + i * 0.48;
+    for (let k = 0; k < 2; k++) {
+      const col = flowerColors[(i + k) % flowerColors.length];
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 6), std(col, { roughness: 0.48 }));
+      head.position.set(fx + k * 0.12, y + 1.62 + k * 0.08, z + 1.95 + k * 0.18);
+      head.castShadow = false;
+      root.add(head);
+    }
   }
 
   const jack = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.8, 0.95),
+    new THREE.PlaneGeometry(2.3, 1.2),
     new THREE.MeshBasicMaterial({ map: jackTex, side: THREE.DoubleSide })
   );
-  jack.position.set(-1.15, y + 3.55, z + 1.85);
+  jack.position.set(-1.4, y + 3.85, z + 2.05);
   root.add(jack);
   const wflag = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.8, 0.95),
+    new THREE.PlaneGeometry(2.3, 1.2),
     new THREE.MeshBasicMaterial({ map: flagTex, side: THREE.DoubleSide })
   );
-  wflag.position.set(1.15, y + 3.55, z + 1.85);
+  wflag.position.set(1.4, y + 3.85, z + 2.05);
   root.add(wflag);
-  cyl(root, 0.03, 0.03, 1.6, -1.15, y + 2.9, z + 1.82, std(0xdddddd), { seg: 6 });
-  cyl(root, 0.03, 0.03, 1.6, 1.15, y + 2.9, z + 1.82, std(0xdddddd), { seg: 6 });
+  cyl(root, 0.035, 0.035, 1.9, -1.4, y + 3.1, z + 2.0, std(0xdddddd), { seg: 6 });
+  cyl(root, 0.035, 0.035, 1.9, 1.4, y + 3.1, z + 2.0, std(0xdddddd), { seg: 6 });
 
   const logo = new THREE.Mesh(
-    new THREE.CircleGeometry(0.7, 28),
+    new THREE.CircleGeometry(0.85, 28),
     new THREE.MeshBasicMaterial({ map: badgeTex, transparent: true })
   );
-  logo.position.set(0, y + 0.2, z + 1.78);
+  logo.position.set(0, y - 0.15, z + 1.95);
   root.add(logo);
 
-  for (const x of [-5.2, -2.6, 0, 2.6, 5.2]) {
-    cyl(root, 0.12, 0.12, 3.2, x, y - 0.4, z + 1.4, cream, { seg: 8 });
+  for (const x of [-5.6, -2.8, 0, 2.8, 5.6]) {
+    cyl(root, 0.16, 0.16, 3.6, x, y - 0.55, z + 1.55, cream, { seg: 10 });
   }
-
   void dims;
 }
 
 function addScoreboards(root, dims, texA, texB) {
-  const y = dims.walkY + 8.4;
-  const z = -6.5;
-  const w = 9.2;
-  const h = 3.7;
+  const y = dims.walkY + 7.2;
+  const z = -(dims.outerHZ - 3.2);
+  const w = 8.6;
+  const h = 3.4;
   const matA = new THREE.MeshBasicMaterial({ map: texA });
   const matB = new THREE.MeshBasicMaterial({ map: texB });
-  const frame = std(0x111411, { roughness: 0.5 });
-  for (const [x, mat] of [[dims.outerHX - 3.8, matA], [-(dims.outerHX - 3.8), matB]]) {
+  const frame = std(0x0a1628, { roughness: 0.5 });
+  for (const [x, mat, name] of [[12.4, matA, 'scoreboardR'], [-12.4, matB, 'scoreboardL']]) {
     const board = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
     board.position.set(x, y, z);
-    board.lookAt(0, y - 2, 0);
-    board.name = x > 0 ? 'scoreboardR' : 'scoreboardL';
+    board.lookAt(0, 3, 0);
+    board.name = name;
     root.add(board);
-    const fr = new THREE.Mesh(new THREE.BoxGeometry(w + 0.35, h + 0.35, 0.18), frame);
+    const fr = new THREE.Mesh(new THREE.BoxGeometry(w + 0.4, h + 0.4, 0.2), frame);
     fr.position.copy(board.position);
     fr.quaternion.copy(board.quaternion);
-    fr.position.add(new THREE.Vector3(0, 0, 0.12).applyQuaternion(board.quaternion));
     root.add(fr);
   }
 }
@@ -838,17 +851,17 @@ function addUmpireAndBenches(root, D) {
 
   function playerKit(z0, towelMat, bagColor) {
     const g = new THREE.Group();
-    for (let i = 0; i < 3; i++) {
-      const zz = z0 + i * 0.7;
-      box(g, 0.48, 0.08, 0.48, x, 0.42, zz, green);
-      box(g, 0.48, 0.55, 0.07, x, 0.72, zz + 0.22, green);
-      cyl(g, 0.03, 0.03, 0.42, x - 0.18, 0.21, zz - 0.16, green, { seg: 6 });
-      cyl(g, 0.03, 0.03, 0.42, x + 0.18, 0.21, zz - 0.16, green, { seg: 6 });
-      cyl(g, 0.03, 0.03, 0.42, x - 0.18, 0.21, zz + 0.16, green, { seg: 6 });
-      cyl(g, 0.03, 0.03, 0.42, x + 0.18, 0.21, zz + 0.16, green, { seg: 6 });
+    for (let i = 0; i < 2; i++) {
+      const zz = z0 + i * 0.72;
+      box(g, 0.46, 0.07, 0.46, x, 0.4, zz, green);
+      box(g, 0.46, 0.48, 0.06, x, 0.68, zz + 0.2, green);
+      cyl(g, 0.025, 0.025, 0.4, x - 0.16, 0.2, zz - 0.15, green, { seg: 6 });
+      cyl(g, 0.025, 0.025, 0.4, x + 0.16, 0.2, zz - 0.15, green, { seg: 6 });
+      cyl(g, 0.025, 0.025, 0.4, x - 0.16, 0.2, zz + 0.15, green, { seg: 6 });
+      cyl(g, 0.025, 0.025, 0.4, x + 0.16, 0.2, zz + 0.15, green, { seg: 6 });
     }
-    const towel = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.04, 0.55), towelMat);
-    towel.position.set(x, 0.48, z0 + 0.7);
+    const towel = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.035, 0.5), towelMat);
+    towel.position.set(x, 0.46, z0 + 0.36);
     towel.rotation.y = 0.2;
     g.add(towel);
     box(g, 0.7, 0.38, 0.42, x + 0.15, 0.22, z0 + 2.15, std(bagColor));
@@ -861,7 +874,7 @@ function addUmpireAndBenches(root, D) {
     root.add(g);
   }
   function iMatColor(z0) {
-    return z0 > 0 ? 0x3a6ea5 : 0xc48a9a;
+    return z0 > 0 ? 0x1d4e89 : 0x1a1a1a;
   }
   playerKit(2.4, towelA, 0x1a1a1a);
   playerKit(-4.4, towelB, 0x0d2418);
@@ -898,9 +911,9 @@ function addSkyAndLand(scene) {
 }
 
 export function applyWimbledonAtmosphere(scene, renderer, controls) {
-  scene.background = new THREE.Color(0x8eb9dc);
-  scene.fog = new THREE.Fog(0x9bbfd4, 95, 260);
-  renderer.toneMappingExposure = 1.08;
+  scene.background = new THREE.Color(0xb7cfe0);
+  scene.fog = new THREE.Fog(0xc5d6e4, 120, 280);
+  renderer.toneMappingExposure = 1.32;
   if (controls) {
     controls.maxDistance = 150;
     controls.minDistance = 5;
@@ -908,12 +921,15 @@ export function applyWimbledonAtmosphere(scene, renderer, controls) {
 }
 
 export function createWimbledonLights(s) {
-  const hemi = new THREE.HemisphereLight(0xe7f2ff, 0x2c4a32, 0.95);
+  const hemi = new THREE.HemisphereLight(0xeef5ff, 0x4a6b50, 1.45);
   hemi.name = 'wimbledonHemi';
   s.add(hemi);
 
-  const sun = new THREE.DirectionalLight(0xfff6e8, 1.35);
-  sun.position.set(6, 42, 9);
+  const amb = new THREE.AmbientLight(0xdde8d8, 0.32);
+  s.add(amb);
+
+  const sun = new THREE.DirectionalLight(0xfff6e8, 0.88);
+  sun.position.set(4, 48, 6);
   sun.castShadow = true;
   const touch = (() => {
     try {
@@ -923,23 +939,29 @@ export function createWimbledonLights(s) {
     }
   })();
   sun.shadow.mapSize.set(touch ? 1024 : 2048, touch ? 1024 : 2048);
-  sun.shadow.camera.left = -32;
-  sun.shadow.camera.right = 32;
-  sun.shadow.camera.top = 32;
-  sun.shadow.camera.bottom = -32;
+  sun.shadow.camera.left = -48;
+  sun.shadow.camera.right = 48;
+  sun.shadow.camera.top = 48;
+  sun.shadow.camera.bottom = -48;
   sun.shadow.camera.near = 1;
-  sun.shadow.camera.far = 90;
-  sun.shadow.bias = -0.0004;
+  sun.shadow.camera.far = 110;
+  sun.shadow.bias = -0.00035;
   sun.name = 'wimbledonSun';
   s.add(sun);
 
-  const fill = new THREE.DirectionalLight(0xcfe4ff, 0.28);
-  fill.position.set(-18, 14, -8);
+  const fill = new THREE.DirectionalLight(0xd7e8ff, 0.42);
+  fill.position.set(-16, 22, -10);
   s.add(fill);
 
-  const bowl = new THREE.PointLight(0xfff2d8, 0.35, 70, 2);
-  bowl.position.set(0, 18, 0);
+  const bowl = new THREE.PointLight(0xfff4e4, 0.55, 90, 1.6);
+  bowl.position.set(0, 20, 0);
   s.add(bowl);
+
+  for (const [x, z] of [[16, 24], [-16, 24], [16, -24], [-16, -24]]) {
+    const lip = new THREE.PointLight(0xfff6ea, 0.4, 55, 1.8);
+    lip.position.set(x, 22, z);
+    s.add(lip);
+  }
 }
 
 export function createWimbledonStadium(scene, courtGroup, D, opts) {

@@ -356,7 +356,7 @@ export const COURT_DIMENSIONS = {
     groundDark: 0x2e7d43,
     lineWhite: 0xffffff,
     netBlack: 0x111111,
-    postGreen: 0x1e4d2b
+    postGreen: 0x2d6a40
   }
 };
 
@@ -391,8 +391,8 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 container.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x8eb9dc);
-scene.fog = new THREE.Fog(0x9bbfd4, 95, 260);
+scene.background = new THREE.Color(0xb7cfe0);
+scene.fog = new THREE.Fog(0xc5d6e4, 120, 280);
 
 const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 600);
 camera.position.set(16, 13, 22);
@@ -558,7 +558,7 @@ export function createTennisCourt(s) {
   }
 
   // Posts
-  const postGeo = new THREE.CylinderGeometry(0.075, 0.075, D.netHeightPost, 20);
+  const postGeo = new THREE.CylinderGeometry(0.09, 0.09, D.netHeightPost, 20);
   const postMat = new THREE.MeshStandardMaterial({ color: D.colors.postGreen, roughness: 0.5, metalness: 0.4 });
   [-postX, postX].forEach((x, idx) => {
     const p = new THREE.Mesh(postGeo, postMat);
@@ -567,7 +567,7 @@ export function createTennisCourt(s) {
     p.name = idx === 0 ? 'netPostL' : 'netPostR';
     netGroup.add(p);
     // cap
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.075, 16, 12), postMat);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 12), postMat);
     cap.position.set(x, D.netHeightPost, 0);
     netGroup.add(cap);
   });
@@ -2778,12 +2778,11 @@ const opponent = createPlayer(scene, {
   spawn: new THREE.Vector3(0, 0, -13.8),
   bounds: { minX: -9, maxX: 9, minZ: -17, maxZ: -0.5 }
 });
-if (PROBE) window.__museTennis = { player, opponent };
 const ball = createBall(scene);
 const ai = createOpponentAI(opponent, ball);
 const fx = createGameFeel(scene);
 const serve = createServeController(player, ball, scene, fx);
-if (PROBE) Object.assign(window.__museTennis, { serve, camera, scene, ball, fx });
+window.__museTennis = { player, opponent, serve, camera, scene, ball, fx, controls };
 
 // ---------- Rally: hitting, aim, reset ----------
 // Every point starts with a serve (side toggles via SERVE.points).
