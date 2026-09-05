@@ -640,6 +640,7 @@ function addSeating(root, opts) {
   for (let n = 0; n < crowdCount; n++) {
     const p = poses[Math.floor(seeded(n * 17.3) * poses.length)];
     const ci = Math.floor(seeded(n * 9.1) * crowdMat.length);
+    if (counts[ci] >= perColor) continue;
     dummyC.position.set(p.x, p.y + 0.58, p.z);
     dummyC.lookAt(0, p.y + 0.58, 0);
     dummyC.updateMatrix();
