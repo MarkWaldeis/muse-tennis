@@ -1968,12 +1968,14 @@ export function createHitSync(actor, ball) {
   }
 
   function arrivalEta() {
-    const p = ball.mesh.position, a = actor.group.position;
-    const dx = a.x - p.x, dz = a.z - p.z;
+    const type = actor.strokeType() || 'forehand';
+    actor.contactPoint(type, tgt);
+    const p = ball.mesh.position;
+    const dx = tgt.x - p.x, dz = tgt.z - p.z;
     const dist = Math.hypot(dx, dz);
-    if (dist < 0.05) return 0;
+    if (dist < 0.18) return 0;
     const closing = (ball.velocity.x * dx + ball.velocity.z * dz) / dist;
-    if (closing < 0.4) return dist < 1.15 ? 0 : STROKE_TIMING.contact;
+    if (closing < 0.4) return dist < 0.9 ? 0 : STROKE_TIMING.contact;
     return dist / closing;
   }
 
