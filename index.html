@@ -3022,7 +3022,7 @@ if (startBtn) startBtn.addEventListener('click', () => startMatch());
 
 document.documentElement.classList.add('menu-open');
 selectCharacter(selectedCharacter);
-if (PROBE) window.__museTennis = { camera, scene, fx, selectCharacter, startMatch, get selectedCharacter() { return selectedCharacter; } };
+if (PROBE) window.__museTennis = { camera, scene, fx, renderer, selectCharacter, startMatch, getSelectedCharacter() { return selectedCharacter; } };
 
 // ---------- Rally: hitting, aim, reset ----------
 // Every point starts with a serve (side toggles via SERVE.points).
@@ -3165,7 +3165,7 @@ function startMatch() {
   if (PROBE) {
     window.__museTennis = window.__museTennis || {};
     Object.assign(window.__museTennis, {
-      player, opponent, serve, camera, scene, ball, fx, selectedCharacter
+      player, opponent, serve, camera, scene, ball, fx, renderer
     });
   }
   serve.setHooks({
@@ -3243,6 +3243,10 @@ resizeView();
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05); // 60fps-unabhängig, clamp bei Tab-Wechsel
+  if (PROBE && window.__museTennis && window.__museTennis.freeze) {
+    renderer.render(scene, camera);
+    return;
+  }
   if (!matchStarted) {
     input.swingPressed = false;
     if (previewPlayer) previewPlayer.update(dt, { x: 0, z: 0 });
