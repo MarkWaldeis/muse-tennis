@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 
 // Centre Court palette sampled from the reference photos.
 export const WIMBLEDON = {
@@ -374,15 +373,6 @@ function makeScoreboardTexture(state) {
   return tex;
 }
 
-function makeSeatGeometry() {
-  const pan = new THREE.BoxGeometry(0.44, 0.07, 0.38);
-  pan.translate(0, 0.035, -0.02);
-  const back = new THREE.BoxGeometry(0.44, 0.50, 0.06);
-  back.translate(0, 0.32, 0.16);
-  const merged = BufferGeometryUtils.mergeGeometries([pan, back]);
-  return merged || pan;
-}
-
 function roundedRectLoop(halfX, halfZ, radius, spacing, fn) {
   const r = Math.min(radius, halfX - 0.2, halfZ - 0.2);
   const straightX = Math.max(0.01, 2 * (halfX - r));
@@ -493,7 +483,6 @@ function addGrassFloor(courtGroup, D) {
 
 function addInnerWalls(root, badgeTex) {
   const wallMat = std(WIMBLEDON.wall, { roughness: 0.78 });
-  const capMat = std(WIMBLEDON.purple, { roughness: 0.55, metalness: 0.15 });
   const walkMat = std(0x1a5c3c, { roughness: 0.72 });
 
   const h = WALL_H;
@@ -504,10 +493,10 @@ function addInnerWalls(root, badgeTex) {
   box(root, INNER_HX * 2 + t * 2, h, t, 0, h / 2, -hz, wallMat, { name: 'wallS' });
   box(root, t, h, INNER_HZ * 2, hx, h / 2, 0, wallMat, { name: 'wallE' });
   box(root, t, h, INNER_HZ * 2, -hx, h / 2, 0, wallMat, { name: 'wallW' });
-  box(root, INNER_HX * 2 + t * 2, 0.06, t + 0.04, 0, h + 0.02, hz, capMat);
-  box(root, INNER_HX * 2 + t * 2, 0.06, t + 0.04, 0, h + 0.02, -hz, capMat);
-  box(root, t + 0.04, 0.06, INNER_HZ * 2, hx, h + 0.02, 0, capMat);
-  box(root, t + 0.04, 0.06, INNER_HZ * 2, -hx, h + 0.02, 0, capMat);
+  box(root, INNER_HX * 2 + t * 2, 0.08, t + 0.04, 0, h + 0.03, hz, wallMat);
+  box(root, INNER_HX * 2 + t * 2, 0.08, t + 0.04, 0, h + 0.03, -hz, wallMat);
+  box(root, t + 0.04, 0.08, INNER_HZ * 2, hx, h + 0.03, 0, wallMat);
+  box(root, t + 0.04, 0.08, INNER_HZ * 2, -hx, h + 0.03, 0, wallMat);
 
   box(root, INNER_HX * 2, 0.06, 0.95, 0, 0.03, INNER_HZ - 0.48, walkMat, { cast: false });
   box(root, INNER_HX * 2, 0.06, 0.95, 0, 0.03, -(INNER_HZ - 0.48), walkMat, { cast: false });
@@ -528,9 +517,7 @@ function addSeating(root, opts) {
   const lowerRows = low ? 7 : LOWER_ROWS;
   const upperRows = low ? 5 : UPPER_ROWS;
   const step = low ? 0.95 : SEAT_STEP;
-  const seatGeo = makeSeatGeometry();
   const seatMat = std(WIMBLEDON.seat, { roughness: 0.58, metalness: 0.04 });
-  const terraceMat = std(0x145232, { roughness: 0.9 });
   const aisleMat = std(WIMBLEDON.step, { roughness: 0.86 });
   const railMat = std(0xd8d8d4, { metalness: 0.35, roughness: 0.4 });
   const walkMat = std(WIMBLEDON.concrete, { roughness: 0.82 });
@@ -541,11 +528,6 @@ function addSeating(root, opts) {
   root.add(terraces);
 
   function rowRing(row, y, hx, hz, radius, isLower) {
-    box(terraces, hx * 2 + 0.6, 0.16, ROW_DEPTH + 0.05, 0, y - 0.05, hz, terraceMat, { cast: false });
-    box(terraces, hx * 2 + 0.6, 0.16, ROW_DEPTH + 0.05, 0, y - 0.05, -hz, terraceMat, { cast: false });
-    box(terraces, ROW_DEPTH + 0.05, 0.16, hz * 2, hx, y - 0.05, 0, terraceMat, { cast: false });
-    box(terraces, ROW_DEPTH + 0.05, 0.16, hz * 2, -hx, y - 0.05, 0, terraceMat, { cast: false });
-
     roundedRectLoop(hx, hz, radius, step, (x, z, ang, i) => {
       const aisle = (i % 12) < 2;
       if (aisle) {
@@ -605,22 +587,31 @@ function addSeating(root, opts) {
     rowRing(r, y, hx, hz, CORNER_R0 + 4 + r * 0.2, false);
   }
 
-  const inst = new THREE.InstancedMesh(seatGeo, seatMat, Math.max(1, poses.length));
-  inst.instanceMatrix.setUsage(THREE.StaticDrawUsage);
-  inst.castShadow = false;
-  inst.receiveShadow = false;
-  inst.name = 'seats';
+  const panGeo = new THREE.BoxGeometry(0.42, 0.07, 0.36);
+  panGeo.translate(0, 0.035, -0.04);
+  const backGeo = new THREE.BoxGeometry(0.42, 0.58, 0.07);
+  backGeo.translate(0, 0.36, 0.14);
+  const panMesh = new THREE.InstancedMesh(panGeo, seatMat, Math.max(1, poses.length));
+  const backMesh = new THREE.InstancedMesh(backGeo, std(0x185a3c, { roughness: 0.55 }), Math.max(1, poses.length));
+  panMesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+  backMesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+  panMesh.castShadow = backMesh.castShadow = false;
+  panMesh.receiveShadow = backMesh.receiveShadow = false;
+  panMesh.name = 'seats';
+  backMesh.name = 'seatBacks';
   const dummy = new THREE.Object3D();
   for (let i = 0; i < poses.length; i++) {
     const p = poses[i];
     dummy.position.set(p.x, p.y, p.z);
     dummy.lookAt(0, p.y, 0);
     dummy.updateMatrix();
-    inst.setMatrixAt(i, dummy.matrix);
+    panMesh.setMatrixAt(i, dummy.matrix);
+    backMesh.setMatrixAt(i, dummy.matrix);
   }
-  inst.computeBoundingSphere();
-  inst.computeBoundingBox();
-  root.add(inst);
+  panMesh.computeBoundingSphere();
+  backMesh.computeBoundingSphere();
+  root.add(panMesh);
+  root.add(backMesh);
 
   return {
     walkY,
@@ -642,9 +633,9 @@ function addBowlShell(root, dims) {
 
 function addRoof(root, dims) {
   const { outerHX, outerHZ, upperTopY } = dims;
-  const roofY = upperTopY + 5.4;
-  const openHX = 18.5;
-  const openHZ = 28.0;
+  const roofY = upperTopY + 3.2;
+  const openHX = 17.5;
+  const openHZ = 26.5;
   const steel = std(WIMBLEDON.steel, { metalness: 0.22, roughness: 0.4 });
   const white = std(WIMBLEDON.roof, { metalness: 0.18, roughness: 0.42 });
   const fabricTex = makeFabricTexture();
@@ -685,10 +676,10 @@ function addRoof(root, dims) {
     for (let i = -7; i <= 7; i++) {
       const z = i * 3.55;
       const xLip = s * openHX;
-      beam(xLip, roofY, z - 1.55, xLip + s * 4.2, peak, z, 0.32);
-      beam(xLip, roofY, z + 1.55, xLip + s * 4.2, peak, z, 0.32);
-      beam(xLip + s * 4.2, peak, z, xLip + s * (sideW * 0.55 + 2), roofY + 0.6, z, 0.24);
-      beam(xLip, roofY, z - 1.55, xLip, roofY, z + 1.55, 0.22);
+      beam(xLip, roofY, z - 1.55, xLip + s * 4.2, peak, z, 0.48);
+      beam(xLip, roofY, z + 1.55, xLip + s * 4.2, peak, z, 0.48);
+      beam(xLip + s * 4.2, peak, z, xLip + s * (sideW * 0.55 + 2), roofY + 0.6, z, 0.36);
+      beam(xLip, roofY, z - 1.55, xLip, roofY, z + 1.55, 0.34);
     }
   }
   for (let s = -1; s <= 1; s += 2) {
@@ -789,20 +780,20 @@ function addRoyalBox(root, dims, jackTex, flagTex, badgeTex) {
 }
 
 function addScoreboards(root, dims, texA, texB) {
-  const y = dims.walkY + 7.2;
-  const z = -(dims.outerHZ - 3.2);
-  const w = 8.6;
-  const h = 3.4;
+  const y = dims.walkY + 2.8;
+  const z = -(INNER_HZ + WALL_T + dims.lowerDepth + 0.4);
+  const w = 7.8;
+  const h = 3.1;
   const matA = new THREE.MeshBasicMaterial({ map: texA });
   const matB = new THREE.MeshBasicMaterial({ map: texB });
   const frame = std(0x0a1628, { roughness: 0.5 });
-  for (const [x, mat, name] of [[12.4, matA, 'scoreboardR'], [-12.4, matB, 'scoreboardL']]) {
+  for (const [x, mat, name] of [[10.2, matA, 'scoreboardR'], [-10.2, matB, 'scoreboardL']]) {
     const board = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
-    board.position.set(x, y, z);
-    board.lookAt(0, 3, 0);
+    board.position.set(x, y, z + 0.4);
+    board.lookAt(0, 2.5, 0);
     board.name = name;
     root.add(board);
-    const fr = new THREE.Mesh(new THREE.BoxGeometry(w + 0.4, h + 0.4, 0.2), frame);
+    const fr = new THREE.Mesh(new THREE.BoxGeometry(w + 0.35, h + 0.35, 0.18), frame);
     fr.position.copy(board.position);
     fr.quaternion.copy(board.quaternion);
     root.add(fr);
