@@ -635,16 +635,20 @@ function addRoof(root, dims) {
   const roofY = upperTopY + 3.2;
   const openHX = 17.5;
   const openHZ = 26.5;
-  const steel = std(WIMBLEDON.steel, { metalness: 0.22, roughness: 0.4 });
-  const white = std(WIMBLEDON.roof, { metalness: 0.18, roughness: 0.42 });
+  const steel = new THREE.MeshStandardMaterial({
+    color: 0xf4f1ea, metalness: 0.2, roughness: 0.38, emissive: 0xe8e4d8, emissiveIntensity: 0.22
+  });
+  const white = new THREE.MeshStandardMaterial({
+    color: 0xf7f4ee, metalness: 0.12, roughness: 0.45, emissive: 0xf0ece4, emissiveIntensity: 0.18
+  });
   const fabricTex = makeFabricTexture();
   const fabric = new THREE.MeshStandardMaterial({
     map: fabricTex,
-    color: 0xf4f2ec,
-    roughness: 0.82,
-    metalness: 0.02,
-    transparent: true,
-    opacity: 0.88,
+    color: 0xf7f4ee,
+    roughness: 0.78,
+    metalness: 0.0,
+    emissive: 0xece8de,
+    emissiveIntensity: 0.28,
     side: THREE.DoubleSide
   });
   const rail = std(WIMBLEDON.rail, { metalness: 0.55, roughness: 0.42 });

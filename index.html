@@ -2970,8 +2970,8 @@ window.addEventListener('keydown', (e) => {
   if (e.key.toLowerCase() === 'c') setFollow(!followCam);
 });
 setFollow(followCam);
-const followOffset = new THREE.Vector3(0, 5.35, 8.6);
-const followLook = new THREE.Vector3(0, 2.35, -8.5); // preallocated (no per-frame alloc)
+const followOffset = new THREE.Vector3(0, 5.2, 8.4);
+const followLook = new THREE.Vector3(0, 3.4, -10.5); // preallocated (no per-frame alloc)
 const desiredCam = new THREE.Vector3();
 const desiredTarget = new THREE.Vector3();
 
