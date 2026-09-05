@@ -612,6 +612,54 @@ function addSeating(root, opts) {
   root.add(panMesh);
   root.add(backMesh);
 
+  const crowdColors = [0xf4f1ea, 0xe8e2d4, 0xd9e4f0, 0x2c4a7c, 0xc45a6a, 0x1f6a45, 0xf0d48a];
+  const crowdMat = crowdColors.map((c) => std(c, { roughness: 0.7 }));
+  const headGeo = new THREE.SphereGeometry(0.11, 6, 5);
+  const bodyGeo = new THREE.BoxGeometry(0.22, 0.34, 0.16);
+  bodyGeo.translate(0, 0.17, 0);
+  const crowdCount = Math.max(1, Math.floor(poses.length * 0.45));
+  const perColor = Math.ceil(crowdCount / crowdMat.length) + 4;
+  const heads = crowdMat.map((m) => {
+    const mesh = new THREE.InstancedMesh(headGeo, m, perColor);
+    mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+    mesh.castShadow = false;
+    mesh.receiveShadow = false;
+    mesh.name = 'crowdHeads';
+    return mesh;
+  });
+  const bodies = crowdMat.map((m) => {
+    const mesh = new THREE.InstancedMesh(bodyGeo, m, perColor);
+    mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+    mesh.castShadow = false;
+    mesh.receiveShadow = false;
+    mesh.name = 'crowdBodies';
+    return mesh;
+  });
+  const counts = crowdMat.map(() => 0);
+  const dummyC = new THREE.Object3D();
+  for (let n = 0; n < crowdCount; n++) {
+    const p = poses[Math.floor(seeded(n * 17.3) * poses.length)];
+    const ci = Math.floor(seeded(n * 9.1) * crowdMat.length);
+    dummyC.position.set(p.x, p.y + 0.58, p.z);
+    dummyC.lookAt(0, p.y + 0.58, 0);
+    dummyC.updateMatrix();
+    heads[ci].setMatrixAt(counts[ci], dummyC.matrix);
+    dummyC.position.set(p.x, p.y + 0.22, p.z);
+    dummyC.updateMatrix();
+    bodies[ci].setMatrixAt(counts[ci], dummyC.matrix);
+    counts[ci]++;
+  }
+  for (let ci = 0; ci < crowdMat.length; ci++) {
+    heads[ci].count = counts[ci];
+    bodies[ci].count = counts[ci];
+    heads[ci].instanceMatrix.needsUpdate = true;
+    bodies[ci].instanceMatrix.needsUpdate = true;
+    if (counts[ci] > 0) {
+      root.add(heads[ci]);
+      root.add(bodies[ci]);
+    }
+  }
+
   return {
     walkY,
     lowerDepth,
