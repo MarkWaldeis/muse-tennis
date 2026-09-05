@@ -30,6 +30,9 @@ import numpy as np
 SRC = Path("/workspace/mascot bird 3d model.glb")
 DST = Path("/workspace/assets/mascot-bird-rigged.glb")
 BONE_MAP = Path("/workspace/assets/mascot-bird-rig.json")
+OTTER_SRC = Path("/workspace/cartoon otter 3d model.glb")
+OTTER_DST = Path("/workspace/assets/mascot-otter-rigged.glb")
+OTTER_BONE_MAP = Path("/workspace/assets/mascot-otter-rig.json")
 
 GRID = 88
 MAX_INFLUENCES = 4
@@ -298,6 +301,157 @@ def fit_skeleton(pos: np.ndarray) -> list[Bone]:
     return list(bones.values())
 
 
+def fit_skeleton_otter(pos: np.ndarray) -> list[Bone]:
+    """Same Mixamo + extra bone set as the bird, fitted to the cartoon otter mesh.
+
+    After the facing flip the otter looks toward -Z (net), left is -X, tail is +Z.
+    """
+    ymin, ymax = float(pos[:, 1].min()), float(pos[:, 1].max())
+    height = ymax - ymin
+    bones: dict[str, Bone] = {}
+
+    def add(name: str, parent: str | None, head, tail, radius: float, deform=True) -> Bone:
+        b = Bone(name, parent, np.asarray(head, np.float32), np.asarray(tail, np.float32),
+                 radius, deform)
+        bones[name] = b
+        if parent:
+            bones[parent].children.append(name)
+        return b
+
+    # Short legs, heavy torso, oversized head — percentages from mesh occupancy.
+    foot_l = slice_centroid(pos, y0=ymin, y1=ymin + 0.14 * height, xsign=-1, z1=0.05)
+    foot_r = slice_centroid(pos, y0=ymin, y1=ymin + 0.14 * height, xsign=1, z1=0.05)
+    hips_y = ymin + 0.22 * height
+    hips = slice_centroid(pos, y0=hips_y - 0.03, y1=hips_y + 0.03, x0=-0.14, x1=0.14, z1=0.10)
+    hips[0] = 0.0
+    chest_y = ymin + 0.40 * height
+    chest = slice_centroid(pos, y0=chest_y - 0.03, y1=chest_y + 0.03, x0=-0.16, x1=0.16, z1=0.08)
+    chest[0] = 0.0
+    neck_y = ymin + 0.62 * height
+    neck = slice_centroid(pos, y0=neck_y - 0.03, y1=neck_y + 0.03, x0=-0.16, x1=0.16, z1=0.06)
+    neck[0] = 0.0
+    head_c = slice_centroid(pos, y0=ymin + 0.74 * height, y1=ymax, z1=0.08)
+    head_top = percentile_pt(pos, pos[:, 1] > ymin + 0.90 * height, 1, 0.98)
+    snout = percentile_pt(pos, (pos[:, 1] > ymin + 0.72 * height) & (pos[:, 2] < 0), 2, 0.02)
+
+    spine = lerp_v(hips, chest, 0.38)
+    spine1 = lerp_v(hips, chest, 0.72)
+    spine2 = chest.copy()
+
+    add("mixamorig:Hips", None, hips, spine, 0.075)
+    add("mixamorig:Spine", "mixamorig:Hips", spine, spine1, 0.08)
+    add("mixamorig:Spine1", "mixamorig:Spine", spine1, spine2, 0.08)
+    add("mixamorig:Spine2", "mixamorig:Spine1", spine2, neck, 0.07)
+    add("mixamorig:Neck", "mixamorig:Spine2", neck, lerp_v(neck, head_c, 0.55), 0.055)
+    add("mixamorig:Head", "mixamorig:Neck", lerp_v(neck, head_c, 0.55), head_c, 0.09)
+    add("mixamorig:HeadTop_End", "mixamorig:Head", head_c, head_top, 0.03, deform=False)
+    add("mixamorig:Head_Beak", "mixamorig:Head", head_c, snout, 0.03)
+
+    crest_base = v3(head_c[0], min(head_top[1] - 0.02, head_c[1] + 0.04), head_c[2])
+    crest_tip = v3(head_top[0], head_top[1], head_top[2] - 0.01)
+    add("mixamorig:Head_Crest1", "mixamorig:Head", crest_base, lerp_v(crest_base, crest_tip, 0.55), 0.02)
+    add("mixamorig:Head_Crest2", "mixamorig:Head_Crest1", lerp_v(crest_base, crest_tip, 0.55), crest_tip, 0.016)
+
+    eye_y = head_c[1] + 0.01
+    eye_z = head_c[2] - 0.09
+    add("mixamorig:LeftEye", "mixamorig:Head", v3(-0.08, eye_y, eye_z), v3(-0.08, eye_y, eye_z - 0.03), 0.02)
+    add("mixamorig:RightEye", "mixamorig:Head", v3(0.08, eye_y, eye_z), v3(0.08, eye_y, eye_z - 0.03), 0.02)
+
+    for side, foot in ((-1, foot_l), (1, foot_r)):
+        tag = "Left" if side < 0 else "Right"
+        hip_s = v3(side * 0.11, hips[1] - 0.01, hips[2] - 0.01)
+        ankle = v3(foot[0], ymin + 0.05 * height, foot[2])
+        knee = lerp_v(hip_s, ankle, 0.50)
+        knee[2] -= 0.015
+        toe_mask = (
+            (pos[:, 1] < ymin + 0.10 * height)
+            & (pos[:, 0] * side > 0.03)
+            & (pos[:, 2] < 0.08)
+        )
+        toe = percentile_pt(pos, toe_mask, 2, 0.08) if np.any(toe_mask) else v3(ankle[0], ankle[1], ankle[2] - 0.07)
+        toe[1] = ymin + 0.018 * height
+        add(f"mixamorig:{tag}UpLeg", "mixamorig:Hips", hip_s, knee, 0.055)
+        add(f"mixamorig:{tag}Leg", f"mixamorig:{tag}UpLeg", knee, ankle, 0.045)
+        add(f"mixamorig:{tag}Foot", f"mixamorig:{tag}Leg", ankle, toe, 0.034)
+        add(f"mixamorig:{tag}ToeBase", f"mixamorig:{tag}Foot", toe, v3(toe[0], toe[1], toe[2] - 0.03), 0.02)
+        for label, dx in (("Inner", -0.028 * side), ("Mid", 0.0), ("Outer", 0.028 * side)):
+            t_head = v3(toe[0] + dx * 0.4, toe[1], toe[2] - 0.006)
+            t_tail = v3(toe[0] + dx, toe[1], toe[2] - 0.038)
+            add(f"mixamorig:{tag}Toe_{label}", f"mixamorig:{tag}ToeBase", t_head, t_tail, 0.012)
+
+    for side in (-1, 1):
+        tag = "Left" if side < 0 else "Right"
+        arm_mask = (
+            (pos[:, 0] * side > 0.16)
+            & (pos[:, 1] > 0.24)
+            & (pos[:, 1] < 0.52)
+        )
+        arm = pos[arm_mask]
+        if len(arm) < 30:
+            arm = pos[(pos[:, 0] * side > 0.12) & (pos[:, 1] > 0.22) & (pos[:, 1] < 0.55)]
+        w_y = float(np.median(arm[:, 1]))
+        w_z = float(np.median(arm[:, 2]))
+        w_z0, w_z1 = float(np.percentile(arm[:, 2], 12)), float(np.percentile(arm[:, 2], 88))
+        w_y0, w_y1 = float(np.percentile(arm[:, 1], 18)), float(np.percentile(arm[:, 1], 82))
+        w_x_ext = float(arm[:, 0].max()) if side > 0 else float(arm[:, 0].min())
+        paw = v3(w_x_ext, w_y, w_z)
+        # Prefer the true lateral extremity so the racket hand sits in the paw, not the elbow.
+        tip_mask = (pos[:, 0] * side > abs(w_x_ext) * 0.82) & (pos[:, 1] > 0.24) & (pos[:, 1] < 0.52)
+        if np.any(tip_mask):
+            paw = pos[tip_mask].mean(axis=0).astype(np.float32)
+        shoulder = v3(side * 0.15, chest[1] + 0.02, chest[2])
+        elbow = lerp_v(shoulder, paw, 0.42)
+        wrist = lerp_v(shoulder, paw, 0.72)
+        hand = lerp_v(shoulder, paw, 0.88)
+        add(f"mixamorig:{tag}Shoulder", "mixamorig:Spine2", shoulder, lerp_v(shoulder, elbow, 0.35), 0.042)
+        add(f"mixamorig:{tag}Arm", f"mixamorig:{tag}Shoulder", lerp_v(shoulder, elbow, 0.35), elbow, 0.038)
+        add(f"mixamorig:{tag}ForeArm", f"mixamorig:{tag}Arm", elbow, wrist, 0.032)
+        add(f"mixamorig:{tag}Hand", f"mixamorig:{tag}ForeArm", wrist, hand, 0.028)
+
+        fingers = ("Thumb", "Index", "Middle", "Ring", "Pinky")
+        # Compact paw, not a wing fan: small spread around the paw tip, thumb more forward (-Z).
+        z_samples = np.linspace(w_z1, w_z0, 5)
+        y_samples = np.linspace(w_y0, w_y1, 5)
+        for i, fname in enumerate(fingers):
+            tip = v3(w_x_ext, float(lerp(y_samples[i], paw[1], 0.55)), float(lerp(z_samples[i], paw[2], 0.45)))
+            p0 = lerp_v(hand, tip, 0.10)
+            p1 = lerp_v(hand, tip, 0.42)
+            p2 = lerp_v(hand, tip, 0.72)
+            rad = 0.012 if fname != "Thumb" else 0.013
+            add(f"mixamorig:{tag}Hand{fname}1", f"mixamorig:{tag}Hand", p0, p1, rad)
+            add(f"mixamorig:{tag}Hand{fname}2", f"mixamorig:{tag}Hand{fname}1", p1, p2, rad * 0.9)
+            add(f"mixamorig:{tag}Hand{fname}3", f"mixamorig:{tag}Hand{fname}2", p2, tip, rad * 0.8)
+
+    tail_pts = []
+    for z0, z1 in [(0.04, 0.12), (0.12, 0.20), (0.20, 0.30), (0.30, 0.42)]:
+        sl = pos[(pos[:, 2] >= z0) & (pos[:, 2] < z1) & (pos[:, 1] < hips[1] + 0.18)]
+        if len(sl) > 8:
+            tail_pts.append(sl.mean(axis=0).astype(np.float32))
+    if not tail_pts:
+        tail_pts = [v3(0, hips[1] - 0.06, 0.10), v3(0.02, 0.08, 0.28)]
+    tail_root = v3(hips[0], hips[1] - 0.03, hips[2] + 0.04)
+    chain = [tail_root] + tail_pts
+    parent = "mixamorig:Hips"
+    names = ["mixamorig:Tail", "mixamorig:Tail1", "mixamorig:Tail2", "mixamorig:Tail3"]
+    for i, name in enumerate(names):
+        a = chain[min(i, len(chain) - 1)]
+        b = chain[min(i + 1, len(chain) - 1)]
+        if np.linalg.norm(b - a) < 1e-4:
+            b = a + v3(0.0, -0.01, 0.06)
+        add(name, parent, a, b, 0.05 - i * 0.005)
+        parent = name
+    tip = chain[-1]
+    for label, dx in (("L", -0.04), ("M", 0.0), ("R", 0.045)):
+        add(f"mixamorig:TailFeather_{label}", "mixamorig:Tail3",
+            tip, v3(tip[0] + dx, tip[1] + 0.01, tip[2] + 0.04), 0.016)
+
+    return list(bones.values())
+
+
+def lerp(a: float, b: float, t: float) -> float:
+    return a * (1.0 - t) + b * t
+
+
 def bone_index(bones: list[Bone]) -> dict[str, int]:
     return {b.name: i for i, b in enumerate(bones)}
 
@@ -399,7 +553,9 @@ def point_segment_dist(pts: np.ndarray, a: np.ndarray, b: np.ndarray) -> np.ndar
     return np.linalg.norm(pts - proj, axis=1)
 
 
-def compute_weights(pos: np.ndarray, idx: np.ndarray, bones: list[Bone]) -> tuple[np.ndarray, np.ndarray]:
+def compute_weights(pos: np.ndarray, idx: np.ndarray, bones: list[Bone],
+                    *, limb_x: float = 0.30, head_y: float = 0.72,
+                    tail_z: float = 0.04) -> tuple[np.ndarray, np.ndarray]:
     deform = [b for b in bones if b.deform]
     bb_min = pos.min(axis=0) - PAD
     bb_max = pos.max(axis=0) + PAD
@@ -462,11 +618,11 @@ def compute_weights(pos: np.ndarray, idx: np.ndarray, bones: list[Bone]) -> tupl
             cost = np.where(pos[:, 0] < -0.04, cost + 8.0, cost)
         if b.name.startswith("mixamorig:Tail"):
             # Tail bones WIN on the rear (+Z) volume, lose on the body.
-            cost = np.where(pos[:, 2] > 0.04, cost * 0.22, cost + 6.0)
+            cost = np.where(pos[:, 2] > tail_z, cost * 0.22, cost + 6.0)
         if b.name in ("mixamorig:Hips", "mixamorig:Spine", "mixamorig:Spine1", "mixamorig:Spine2"):
-            cost = np.where(pos[:, 2] > 0.06, cost + 5.5, cost)
-            cost = np.where(np.abs(pos[:, 0]) > 0.30, cost + 4.0, cost)
-            cost = np.where(pos[:, 1] > 0.72, cost + 3.5, cost)
+            cost = np.where(pos[:, 2] > tail_z + 0.02, cost + 5.5, cost)
+            cost = np.where(np.abs(pos[:, 0]) > limb_x, cost + 4.0, cost)
+            cost = np.where(pos[:, 1] > head_y, cost + 3.5, cost)
         if "Hand" in b.name and b.name.split("Hand")[-1] != "":
             # Finger phalanges: strong near the feather, weak elsewhere
             cost = np.where(eucl < max(0.05, b.radius * 8.0), cost * 0.18, cost + 5.0)
@@ -518,7 +674,7 @@ def local_translations(bones: list[Bone]) -> list[list[float]]:
     return out
 
 
-def build_rigged_glb(src: Path, dst: Path) -> dict:
+def build_rigged_glb(src: Path, dst: Path, bone_map: Path = BONE_MAP, profile: str = "bird") -> dict:
     doc, blob = load_glb(src)
     pos = accessor_numpy(doc, blob, 0).astype(np.float32).copy()
     nor = accessor_numpy(doc, blob, 1).astype(np.float32).copy()
@@ -530,14 +686,21 @@ def build_rigged_glb(src: Path, dst: Path) -> dict:
     nor[:, 2] *= -1.0
     idx = idx.reshape(-1, 3)[:, [0, 2, 1]].reshape(-1)
 
-    print("fitting skeleton…")
-    bones = fit_skeleton(pos)
+    print(f"fitting skeleton ({profile})…")
+    if profile == "otter":
+        bones = fit_skeleton_otter(pos)
+        weight_kw = {"limb_x": 0.20, "head_y": 0.70, "tail_z": 0.05}
+    elif profile == "bird":
+        bones = fit_skeleton(pos)
+        weight_kw = {}
+    else:
+        raise ValueError(f"unknown rig profile {profile!r}")
     print(f"  {len(bones)} bones")
     for b in bones:
         print(f"    {b.name:32s} head={b.head}  len={b.length:.3f}")
 
     print("computing volumetric weights…")
-    joints, weights = compute_weights(pos, idx.reshape(-1, 3), bones)
+    joints, weights = compute_weights(pos, idx.reshape(-1, 3), bones, **weight_kw)
     ibm = inverse_bind_matrices(bones)
     locals_ = local_translations(bones)
 
@@ -578,11 +741,15 @@ def build_rigged_glb(src: Path, dst: Path) -> dict:
         {"bufferView": 7, "componentType": 5126, "count": len(bones), "type": "MAT4"},
     ]
 
+    mesh_name = "MascotOtter" if profile == "otter" else "MascotBird"
+    skin_name = "MascotOtterSkin" if profile == "otter" else "MascotBirdSkin"
+    image_name = "otter_basecolor" if profile == "otter" else "mascot_basecolor"
+
     # Node 0 = Armature, 1 = mesh, 2.. = bones
     bone_nodes_start = 2
     nodes = [
         {"name": "Armature", "children": [1] + [bone_nodes_start]},
-        {"name": "MascotBird", "mesh": 0, "skin": 0},
+        {"name": mesh_name, "mesh": 0, "skin": 0},
     ]
     parent_idx = {b.name: bone_nodes_start + i for i, b in enumerate(bones)}
     for i, b in enumerate(bones):
@@ -596,7 +763,7 @@ def build_rigged_glb(src: Path, dst: Path) -> dict:
         nodes.append(node)
 
     skins = [{
-        "name": "MascotBirdSkin",
+        "name": skin_name,
         "skeleton": bone_nodes_start,
         "joints": [bone_nodes_start + i for i in range(len(bones))],
         "inverseBindMatrices": 6,
@@ -608,7 +775,7 @@ def build_rigged_glb(src: Path, dst: Path) -> dict:
         "scenes": [{"nodes": [0]}],
         "nodes": nodes,
         "meshes": [{
-            "name": "MascotBirdMesh",
+            "name": mesh_name + "Mesh",
             "primitives": [{
                 "attributes": {
                     "POSITION": 0,
@@ -625,7 +792,7 @@ def build_rigged_glb(src: Path, dst: Path) -> dict:
         "materials": doc["materials"],
         "textures": doc.get("textures", []),
         "samplers": doc.get("samplers", []),
-        "images": [{"name": "mascot_basecolor", "bufferView": 0, "mimeType": "image/jpeg"}],
+        "images": [{"name": image_name, "bufferView": 0, "mimeType": "image/jpeg"}],
         "accessors": accessors,
         "bufferViews": views,
         "buffers": [{"byteLength": len(blob_out)}],
@@ -649,16 +816,39 @@ def build_rigged_glb(src: Path, dst: Path) -> dict:
         "boneCount": len(bones),
         "maxInfluences": MAX_INFLUENCES,
         "method": "voxel-geodesic-heat",
+        "profile": profile,
     }
-    BONE_MAP.write_text(json.dumps(meta, indent=2))
+    bone_map.write_text(json.dumps(meta, indent=2))
     print(f"wrote {dst} ({dst.stat().st_size} bytes), {len(bones)} bones")
+    print(f"wrote {bone_map}")
     return meta
 
 
 def main() -> int:
-    src = Path(sys.argv[1]) if len(sys.argv) > 1 else SRC
-    dst = Path(sys.argv[2]) if len(sys.argv) > 2 else DST
-    build_rigged_glb(src, dst)
+    argv = sys.argv[1:]
+    profile = None
+    positional: list[str] = []
+    i = 0
+    while i < len(argv):
+        if argv[i] == "--profile":
+            if i + 1 >= len(argv):
+                raise SystemExit("missing value for --profile")
+            profile = argv[i + 1]
+            i += 2
+            continue
+        positional.append(argv[i])
+        i += 1
+    if profile is None:
+        profile = "otter" if positional and "otter" in positional[0].lower() else "bird"
+    src = Path(positional[0]) if len(positional) > 0 else (OTTER_SRC if profile == "otter" else SRC)
+    dst = Path(positional[1]) if len(positional) > 1 else (OTTER_DST if profile == "otter" else DST)
+    if len(positional) > 2:
+        bone_map = Path(positional[2])
+    elif profile == "otter":
+        bone_map = OTTER_BONE_MAP
+    else:
+        bone_map = BONE_MAP
+    build_rigged_glb(src, dst, bone_map, profile)
     return 0
 
 

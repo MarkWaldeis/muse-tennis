@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="de" class="menu-open">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
@@ -220,6 +220,66 @@
     #hitCaption { display: none; }
     html.touch-ui #serveUI { bottom: calc(118px + var(--safe-b)); }
   }
+
+  html.menu-open #info,
+  html.menu-open #score,
+  html.menu-open #status,
+  html.menu-open #camBtn,
+  html.menu-open #resetBtn,
+  html.menu-open #serveUI,
+  html.menu-open #touchPad,
+  html.menu-open #callout {
+    display: none !important;
+  }
+  #mainMenu {
+    display: none;
+    position: absolute; inset: 0; z-index: 25;
+    align-items: flex-start; justify-content: center;
+    padding: calc(28px + var(--safe-t)) 16px calc(24px + var(--safe-b));
+    background: linear-gradient(180deg, rgba(10, 28, 64, 0.55) 0%, rgba(10, 28, 64, 0.12) 42%, rgba(10, 28, 64, 0.45) 100%);
+    pointer-events: none;
+  }
+  html.menu-open #mainMenu { display: flex; }
+  .menu-card {
+    pointer-events: auto;
+    width: min(420px, calc(100vw - 32px));
+    margin-top: 8vh;
+    padding: 22px 22px 20px;
+    border-radius: 16px;
+    background: rgba(12, 28, 62, 0.88);
+    color: #fff;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.38);
+    text-align: center;
+  }
+  .menu-card h1 {
+    margin: 0 0 6px; font-size: clamp(22px, 5vw, 30px); letter-spacing: 0.12em;
+  }
+  .menu-card p {
+    margin: 0 0 16px; opacity: 0.82; font-size: 14px;
+  }
+  .char-picks {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px;
+  }
+  .char-card {
+    appearance: none; border: 2px solid rgba(255,255,255,0.28);
+    background: rgba(255,255,255,0.08); color: #fff;
+    border-radius: 12px; padding: 14px 8px; cursor: pointer;
+    font: inherit; -webkit-tap-highlight-color: transparent;
+  }
+  .char-card .char-emoji { display: block; font-size: 32px; line-height: 1.2; }
+  .char-card .char-name { display: block; margin-top: 4px; font-weight: 700; letter-spacing: 0.06em; }
+  .char-card[aria-pressed="true"] {
+    border-color: #ffe566; background: rgba(255, 229, 102, 0.18);
+  }
+  #startBtn {
+    appearance: none; width: 100%; border: none; cursor: pointer;
+    background: #3cb85c; color: #fff; font-weight: 800;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    border-radius: 12px; padding: 14px 16px; font-size: 16px;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.28);
+    -webkit-tap-highlight-color: transparent;
+  }
+  #startBtn:active { transform: scale(0.98); }
 </style>
 <script>
 (function () {
@@ -242,7 +302,24 @@
 </head>
 <body>
 <div id="app"></div>
-<div id="loading">Lade Spieler-Rig…</div>
+<div id="loading">Lade Charaktere…</div>
+<div id="mainMenu">
+  <div class="menu-card">
+    <h1>MUSE TENNIS</h1>
+    <p>Charakter auswählen</p>
+    <div class="char-picks" role="group" aria-label="Charakter auswählen">
+      <button type="button" class="char-card" data-character="bird" aria-pressed="true">
+        <span class="char-emoji" aria-hidden="true">🐦</span>
+        <span class="char-name">Vogel</span>
+      </button>
+      <button type="button" class="char-card" data-character="otter" aria-pressed="false">
+        <span class="char-emoji" aria-hidden="true">🦦</span>
+        <span class="char-name">Otter</span>
+      </button>
+    </div>
+    <button type="button" id="startBtn">Starten</button>
+  </div>
+</div>
 <div id="info">
   <span class="desk">🎾 Tennis – Aufschlag & Rally<br>WASD: laufen • Space: Aufschlag/Schlag (Vorhand/Rückhand auto) • R: neu • C: Cam</span>
   <span class="mob">🎾 Stick: laufen • großer Knopf: Aufschlag/Schlag<br>↻ neu • 📷 Kamera</span>
@@ -607,10 +684,39 @@ export const PLAYER = {
   }
 };
 
-// Rigged Tripo mascot: 1m bind pose, Mixamo joints, volumetric weights.
+// Rigged Tripo mascots: 1m bind pose, Mixamo joints, volumetric weights.
 const MASCOT_SCALE = 1.65;
 const MASCOT_URL = 'assets/mascot-bird-rigged.glb';
+const CHARACTERS = {
+  bird: {
+    id: 'bird',
+    label: 'Vogel',
+    url: 'assets/mascot-bird-rigged.glb',
+    bodyClear: 0.42,
+    headClear: 0.44
+  },
+  otter: {
+    id: 'otter',
+    label: 'Otter',
+    url: 'assets/mascot-otter-rigged.glb',
+    bodyClear: 0.52,
+    headClear: 0.58
+  }
+};
+const characterGltf = { bird: null, otter: null };
+let selectedCharacter = 'bird';
 let mascotGltf = null;
+
+function characterDef(id) {
+  switch (id) {
+    case 'bird': return CHARACTERS.bird;
+    case 'otter': return CHARACTERS.otter;
+    default: {
+      const _exhaustive = id;
+      throw new Error('unknown character: ' + _exhaustive);
+    }
+  }
+}
 
 function collectBones(root) {
   const map = new Map();
@@ -788,9 +894,10 @@ export function createPlayer(s, opts = {}) {
 
   function shadowed(m) { m.castShadow = true; return m; }
 
-  const model = SkeletonUtils.clone(mascotGltf.scene);
+  const gltf = opts.gltf || mascotGltf;
+  const model = SkeletonUtils.clone(gltf.scene);
   model.name = 'mascot';
-  model.scale.setScalar(MASCOT_SCALE);
+  model.scale.setScalar(opts.scale || MASCOT_SCALE);
   model.traverse((o) => {
     if (!o.isMesh) return;
     o.castShadow = true;
@@ -1312,8 +1419,8 @@ export function createPlayer(s, opts = {}) {
 
   // Backstop: keep every racket sample outside the torso column and away from the skull
   // by yawing the whole arm outward around the body axis (never through the belly).
-  const BODY_CLEAR = 0.42; // torso radius + frame tube + margin (world m)
-  const HEAD_CLEAR = 0.44;
+  const BODY_CLEAR = opts.bodyClear != null ? opts.bodyClear : 0.42; // torso radius + frame tube + margin (world m)
+  const HEAD_CLEAR = opts.headClear != null ? opts.headClear : 0.44;
   const _axisL = new THREE.Vector3();
   const _clearH = new THREE.Vector3();
   function keepRacketClear() {
@@ -2763,26 +2870,83 @@ export function createServeController(pl, bl, s, fx) {
 }
 
 createTennisCourt(scene);
+const fx = createGameFeel(scene);
+const loader = new GLTFLoader();
 try {
-  mascotGltf = await new GLTFLoader().loadAsync(MASCOT_URL);
+  characterGltf.bird = await loader.loadAsync(CHARACTERS.bird.url);
+  mascotGltf = characterGltf.bird;
 } catch (err) {
   const el = document.getElementById('loading');
-  if (el) el.textContent = 'Rig konnte nicht geladen werden: ' + (err && err.message ? err.message : err);
+  if (el) el.textContent = 'Vogel-Rig konnte nicht geladen werden: ' + (err && err.message ? err.message : err);
+  throw err;
+}
+try {
+  characterGltf.otter = await loader.loadAsync(CHARACTERS.otter.url);
+} catch (err) {
+  const el = document.getElementById('loading');
+  if (el) el.textContent = 'Otter-Rig konnte nicht geladen werden: ' + (err && err.message ? err.message : err);
   throw err;
 }
 const loadingEl = document.getElementById('loading');
 if (loadingEl) loadingEl.remove();
-const player = createPlayer(scene);
-const opponent = createPlayer(scene, {
-  name: 'opponent', faceDir: 1, shirtColor: 0x2a9dca, speed: AI.speed,
-  spawn: new THREE.Vector3(0, 0, -13.8),
-  bounds: { minX: -9, maxX: 9, minZ: -17, maxZ: -0.5 }
+
+let matchStarted = false;
+let player = null;
+let opponent = null;
+let ball = null;
+let ai = null;
+let serve = null;
+let playerSync = null;
+let previewPlayer = null;
+
+function disposeActor(actor) {
+  if (!actor || !actor.group) return;
+  scene.remove(actor.group);
+}
+
+function playerOptsFor(id, extra = {}) {
+  const def = characterDef(id);
+  return {
+    gltf: characterGltf[id],
+    bodyClear: def.bodyClear,
+    headClear: def.headClear,
+    ...extra
+  };
+}
+
+function spawnPreview() {
+  disposeActor(previewPlayer);
+  previewPlayer = createPlayer(scene, playerOptsFor(selectedCharacter, {
+    name: 'preview',
+    spawn: new THREE.Vector3(0, 0, 8)
+  }));
+  camera.position.set(2.8, 2.15, 12.4);
+  controls.target.set(0, 1.05, 8);
+  controls.update();
+}
+
+function syncCharacterButtons() {
+  document.querySelectorAll('.char-card').forEach((btn) => {
+    btn.setAttribute('aria-pressed', btn.dataset.character === selectedCharacter ? 'true' : 'false');
+  });
+}
+
+function selectCharacter(id) {
+  characterDef(id);
+  selectedCharacter = id;
+  syncCharacterButtons();
+  spawnPreview();
+}
+
+document.querySelectorAll('.char-card').forEach((btn) => {
+  btn.addEventListener('click', () => selectCharacter(btn.dataset.character));
 });
-const ball = createBall(scene);
-const ai = createOpponentAI(opponent, ball);
-const fx = createGameFeel(scene);
-const serve = createServeController(player, ball, scene, fx);
-window.__museTennis = { player, opponent, serve, camera, scene, ball, fx, controls };
+const startBtn = document.getElementById('startBtn');
+if (startBtn) startBtn.addEventListener('click', () => startMatch());
+
+document.documentElement.classList.add('menu-open');
+selectCharacter(selectedCharacter);
+if (PROBE) window.__museTennis = { camera, scene, fx, renderer, selectCharacter, startMatch, getSelectedCharacter() { return selectedCharacter; } };
 
 // ---------- Rally: hitting, aim, reset ----------
 // Every point starts with a serve (side toggles via SERVE.points).
@@ -2870,20 +3034,6 @@ function awardPoint(winner, reason, skipPointCallout) {
   serve.enterReady(msg + ' – neuer Aufschlag, ' + hitHint() + ' = hochwerfen');
 }
 
-serve.setHooks({
-  onEnterReady() {
-    rallyHits = 0;
-    playerSync.cancel(); ai.cancel(); // no stale committed hits into the new point
-    // AI to diagonal return stance (mirrors serve side)
-    const ax = SERVE.side === 'deuce' ? -1.6 : 1.6;
-    opponent.group.position.set(ax, 0, -12.4);
-  },
-  onGoodServe() {
-    rallyHits = 1;
-    refreshStatus('Guter Aufschlag!');
-  }
-});
-
 // Player aim: direction keys shape the shot, default deep cross-court
 function playerAimTarget() {
   const p = player.group.position;
@@ -2893,7 +3043,6 @@ function playerAimTarget() {
 }
 
 // Swing started (Space): commit the hit if the ball is in reach now or on the contact frame.
-const playerSync = createHitSync(player, ball);
 const PLAYER_REACH = 2.4;
 const playerLaunch = new THREE.Vector3();
 function armPlayerHit() {
@@ -2924,10 +3073,49 @@ function resetRally(msg, winner, skipPointCallout) {
 }
 
 function safetyReset() {
-  // Neutral reset (dead ball / R key): no point counted
+  if (!matchStarted || !serve) return;
   rallyHits = 0;
   deadTimer = 0;
   serve.enterReady();
+}
+
+function startMatch() {
+  if (matchStarted) return;
+  matchStarted = true;
+  disposeActor(previewPlayer);
+  previewPlayer = null;
+  player = createPlayer(scene, playerOptsFor(selectedCharacter));
+  opponent = createPlayer(scene, playerOptsFor('bird', {
+    name: 'opponent', faceDir: 1, shirtColor: 0x2a9dca, speed: AI.speed,
+    spawn: new THREE.Vector3(0, 0, -13.8),
+    bounds: { minX: -9, maxX: 9, minZ: -17, maxZ: -0.5 }
+  }));
+  ball = createBall(scene);
+  ai = createOpponentAI(opponent, ball);
+  serve = createServeController(player, ball, scene, fx);
+  playerSync = createHitSync(player, ball);
+  if (PROBE) {
+    window.__museTennis = window.__museTennis || {};
+    Object.assign(window.__museTennis, {
+      player, opponent, serve, camera, scene, ball, fx, renderer
+    });
+  }
+  serve.setHooks({
+    onEnterReady() {
+      rallyHits = 0;
+      playerSync.cancel(); ai.cancel();
+      const ax = SERVE.side === 'deuce' ? -1.6 : 1.6;
+      opponent.group.position.set(ax, 0, -12.4);
+    },
+    onGoodServe() {
+      rallyHits = 1;
+      refreshStatus('Guter Aufschlag!');
+    }
+  });
+  document.documentElement.classList.remove('menu-open');
+  setFollow(true);
+  updateScoreboard();
+  serve.enterReady('1. Aufschlag – hinter die Grundlinie, ' + hitHint() + ' = hochwerfen');
 }
 
 window.addEventListener('keydown', (e) => {
@@ -2935,9 +3123,6 @@ window.addEventListener('keydown', (e) => {
 });
 const resetBtn = document.getElementById('resetBtn');
 if (resetBtn) resetBtn.addEventListener('click', (e) => { e.preventDefault(); safetyReset(); });
-
-serve.enterReady('1. Aufschlag – hinter die Grundlinie, ' + hitHint() + ' = hochwerfen');
-updateScoreboard();
 
 // Follow-Cam (toggle with C / Button). On touch, orbit stays off while following
 // so thumbs on the canvas don't yank the camera mid-point.
@@ -2995,6 +3180,17 @@ resizeView();
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05); // 60fps-unabhängig, clamp bei Tab-Wechsel
+  if (PROBE && window.__museTennis && window.__museTennis.freeze) {
+    renderer.render(scene, camera);
+    return;
+  }
+  if (!matchStarted) {
+    input.swingPressed = false;
+    if (previewPlayer) previewPlayer.update(dt, { x: 0, z: 0 });
+    controls.update();
+    renderer.render(scene, camera);
+    return;
+  }
   pollInput();
   if (hitCaption) {
     const mode = serve.getMode();
