@@ -766,7 +766,10 @@ function curlFingers(bones, tag, amount) {
 
 // Groundstroke timing (s). The clip runs `dur` seconds; the ball leaves the racket at
 // `contact` (unit turn + take-back before it, extension / wiper finish / recovery after).
-export const STROKE_TIMING = { dur: 0.64, contact: 0.21 };
+// `steer` is the last window before contact: only then is the ball magnetized onto the
+// strings. Steering from t=0 parks the ball in the strike zone while the hoop still
+// sweeps backward through it — that reads as a double hit.
+export const STROKE_TIMING = { dur: 0.64, contact: 0.21, steer: 0.10 };
 
 // Keyboard + touch input (WASD / arrows / Space / on-screen stick + hit)
 export const input = { x: 0, z: 0, swingPressed: false };
@@ -1672,17 +1675,31 @@ export function createPlayer(s, opts = {}) {
   let splitT = 0;  // split-step hop timer (set by splitStep())
   const ev = { started: false, contact: false };
 
-  function playStroke(type) {
+  function playStroke(type, startT) {
     if (stroke) return false;
-    stroke = { type: type === 'backhand' ? 'backhand' : 'forehand', t: 0, contactFired: false };
+    const t0 = Math.max(0, startT || 0);
+    // Never start on/after contact: the launch hook would miss this swing.
+    const cap = STROKE_TIMING.contact - 0.04;
+    stroke = {
+      type: type === 'backhand' ? 'backhand' : 'forehand',
+      t: Math.min(t0, cap),
+      contactFired: false
+    };
     return true;
   }
   function noteBall(dx) { notedDX = dx; }
   function splitStep() { splitT = 0.25; }
   function pickStroke() { return notedDX * faceDir > 0.3 ? 'backhand' : 'forehand'; }
-  function swing() { return playStroke(pickStroke()); }
+  function swing(startT) { return playStroke(pickStroke(), startT); }
   function strokeType() { return stroke ? stroke.type : null; }
   function strokeTime() { return stroke ? stroke.t : 0; }
+  // Jump the clip forward (late balls) so the unit-turn doesn't sweep the hoop
+  // backward through a ball that's already in the strike zone.
+  function advanceStroke(t) {
+    if (!stroke || stroke.contactFired) return;
+    const cap = STROKE_TIMING.contact - 0.04;
+    stroke.t = Math.max(stroke.t, Math.min(Math.max(0, t), cap));
+  }
 
   // String-centre position at the contact frame, precomputed per stroke in group-local space
   // (the pose is deterministic), so the ball can be steered to meet the sweet spot.
@@ -1745,7 +1762,7 @@ export function createPlayer(s, opts = {}) {
   }
 
   return {
-    group, root, update, swing, playStroke, noteBall, splitStep, velocity: vel,
+    group, root, update, swing, playStroke, advanceStroke, noteBall, splitStep, velocity: vel,
     strokeType, strokeTime, contactPoint,
     applyTennisPose, captureRig, blendRig, keepRacketClear, sampleRacketClearance,
     joints: { root, torso, head: headGroup, armL, armR, legL, legR, racket, fistL, fistR }
@@ -1950,15 +1967,30 @@ export function createHitSync(actor, ball) {
     return dNow < reach || dThen < reach;
   }
 
+  function arrivalEta() {
+    const p = ball.mesh.position, a = actor.group.position;
+    const dx = a.x - p.x, dz = a.z - p.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < 0.05) return 0;
+    const closing = (ball.velocity.x * dx + ball.velocity.z * dz) / dist;
+    if (closing < 0.4) return dist < 1.15 ? 0 : STROKE_TIMING.contact;
+    return dist / closing;
+  }
+
+  function takeBackSkip() {
+    // Time the contact frame to the ball's arrival so the unit-turn finishes
+    // before the hoop and ball share the strike zone.
+    const windup = THREE.MathUtils.clamp(arrivalEta(), 0.06, STROKE_TIMING.contact);
+    return Math.max(0, STROKE_TIMING.contact - windup);
+  }
+
   function commit() {
     const type = actor.strokeType();
     if (!type) return false;
     pending = type;
-    // ballistic retarget: fly into the racket head at the contact frame
-    const T = Math.max(0.05, STROKE_TIMING.contact - actor.strokeTime());
-    actor.contactPoint(type, tgt);
-    const p = ball.mesh.position, v = ball.velocity;
-    v.set((tgt.x - p.x) / T, (tgt.y - p.y - 0.5 * BALL.gravity * T * T) / T, (tgt.z - p.z) / T);
+    if (actor.advanceStroke) actor.advanceStroke(takeBackSkip());
+    // Do not retarget yet: the ball keeps its natural flight through the unit-turn.
+    // steer() magnetizes it onto the strings only on the forward swing.
     return true;
   }
 
@@ -1966,8 +1998,10 @@ export function createHitSync(actor, ball) {
   // ballistic so the ball arrives exactly on the contact frame instead of racing ahead of it.
   function steer(dt) {
     if (!pending) return;
-    actor.contactPoint(pending, tgt);
     const remaining = STROKE_TIMING.contact - actor.strokeTime();
+    // Take-back is still carrying the hoop backward through the strike zone.
+    if (remaining > STROKE_TIMING.steer) return;
+    actor.contactPoint(pending, tgt);
     const p = ball.mesh.position, v = ball.velocity;
     if (remaining <= dt) { p.copy(tgt); v.set(0, 0, 0); return; } // on the strings
     v.set((tgt.x - p.x) / remaining, (tgt.y - p.y - 0.5 * BALL.gravity * remaining * remaining) / remaining, (tgt.z - p.z) / remaining);
@@ -2023,8 +2057,8 @@ export function createOpponentAI(opp, ball) {
 
     // Where to run? Chase predicted landing if ball is ours, else go home.
     let tx = AI.home.x, tz = AI.home.z;
-    const incoming = ball.velocity.z < -0.5 && bp.z > -2;
-    if (bp.z < 1.0 || incoming) {
+    const chasing = ball.velocity.z < -0.5 && bp.z > -2;
+    if (bp.z < 1.0 || chasing) {
       const land = ball.predictLanding();
       if (land.z < 1.0) { tx = land.x; tz = land.z - 0.7; }
     }
@@ -2047,8 +2081,11 @@ export function createOpponentAI(opp, ball) {
       return true;
     }
 
-    // Start the swing when the ball is (or will be at contact) in reach on our side
-    if (cooldown <= 0 && !sync.pending && sync.inReach(AI.reach, (p) => p.z < 0.4)) {
+    // Start the swing when the ball is (or will be at contact) in reach on our side.
+    // Never re-hit our own shot: that is the on-court double-hit (same stroke or a
+    // second swing while the ball is still on the strings / going back).
+    const returnable = ball.hitter !== 'ai' && ball.velocity.z < 0.8 && bp.z < 0.15;
+    if (cooldown <= 0 && !sync.pending && returnable && sync.inReach(AI.reach, (p) => p.z < 0.15)) {
       opp.noteBall(bp.x - op.x); // refresh side AFTER the run-up: correct forehand/backhand pick
       if (opp.swing() && sync.commit()) {
         pendingTarget = pickTarget();
