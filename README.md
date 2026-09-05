@@ -1,6 +1,6 @@
 # 🎾 Muse Tennis 3D
 
-Ein interaktives 3D-Tennisspiel direkt im Browser, entwickelt mit **Three.js** im authentischen US Open Court-Design. Mit vollständigem Ballwechsel-System, Aufschlag-Mechanik mit Timing-Bar, Ballphysik, automatischer Vorhand-/Rückhand-Auswahl, intelligenter Gegner-KI und offiziellem Tennis-Zählsystem.
+Ein interaktives 3D-Tennisspiel direkt im Browser, entwickelt mit **Three.js** auf einem hochdetaillierten **Wimbledon Centre Court**. Mit vollständigem Ballwechsel-System, Aufschlag-Mechanik mit Timing-Bar, Ballphysik, automatischer Vorhand-/Rückhand-Auswahl, intelligenter Gegner-KI und offiziellem Tennis-Zählsystem.
 
 ## 🚀 Direkt spielen
 
@@ -26,13 +26,13 @@ Ein interaktives 3D-Tennisspiel direkt im Browser, entwickelt mit **Three.js** i
 ## ✨ Features
 
 - 🐣 **Geriggter Mascot-Spieler:** Tripo-Vogel mit Mixamo-Skeleton (Finger, Zehen, Schwanz, Kamm), volumetrischem Skinning und Tennisschläger in der Schlaghand.
-- 🏟️ **US Open Court:** Realistische Abmessungen nach offiziellen ITF-Standards (Einzelfeld, Doppelfeld, Aufschlagfelder, Baseline, Netz mit realistischem Durchhang).
-- 🎯 **Aufschlag-Mechanik:** Interaktives Aufschlag-Minigame mit Ballwurf und Sweet-Spot Timing-Balken.
+- 🏟️ **Wimbledon Centre Court:** Rasenplatz nach ITF-Maßen (Einzelfeld, Doppelfeld, Aufschlagfelder, Baseline, Netz mit realistischem Durchhang) in einer Stadion-Schüssel mit dunkelgrünen Sitzreihen, Royal Box, Union Jack, digitalem Scoreboard, Schiedsrichterstuhl und teilweise geöffnetem Retractable Roof.
+- 🎯 **Aufschlag-Mechanik:** Interaktives Aufschlag-Minigame mit Ballwurf und Sweet-Spot Timing-Balken – dieselben Ready/Toss/Strike/Follow-Animationen wie zuvor, jetzt auf dem Rasen hinter der Grundlinie.
 - ⚡ **Ballphysik & Rallye:** Schwerkraft, Luftwiderstand, Netzkollision, Doppeldotz- und Aus-Erkennung.
 - 🤖 **KI-Gegner:** Reagiert auf Bälle, positioniert sich dynamisch, führt Grundlinienschläge aus und macht realistische Split-Steps.
 - 🎾 **Automatische Schlagwahl:** Spieler erkennt Ballposition und führt automatisch Vorhand- oder Rückhandschwünge aus.
 - 📊 **Tennis-Zählwerk:** Echte Zählweise (0, 15, 30, 40, Einstand, Vorteil, Spiele, Sätze) mit wechselnder Aufschlagseite.
-- 🎥 **Dual-Kamera-System:** Dynamische Follow-Kamera hinter dem Spieler oder freie Orbit-Kamera zur Platzübersicht.
+- 🎥 **Dual-Kamera-System:** Dynamische Follow-Kamera hinter dem Spieler oder freie Orbit-Kamera zur Stadionübersicht.
 - 📱 **Touch-Steuerung:** Virtueller Stick und großer Schlag-Knopf für Handy und Tablet, inklusive Aufschlag-Timing.
 
 ---
@@ -42,6 +42,7 @@ Ein interaktives 3D-Tennisspiel direkt im Browser, entwickelt mit **Three.js** i
 ```text
 muse-tennis/
 ├── index.html                      # Spiel (Three.js, Logik, UI, Physik)
+├── wimbledon-stadium.js            # Centre-Court-Stadion, Rasen, Dach, Props
 ├── assets/mascot-bird-rigged.glb   # Geriggter Spieler (Mixamo-Skeleton + Finger)
 ├── assets/mascot-bird-rig.json     # Knochenkarte / Bind-Metadaten
 ├── tools/rig_character.py          # CPU-Auto-Rigger (voxel-geodesic heat)
@@ -54,7 +55,7 @@ muse-tennis/
 
 ## 🛠️ Lokale Entwicklung
 
-Einfach die Datei `index.html` direkt im Browser per Doppelklick oder über einen lokalen Webserver öffnen (z. B. VS Code Live Server oder `python -m http.server 8000`).
+Einfach die Datei `index.html` über einen lokalen Webserver öffnen (z. B. VS Code Live Server oder `python -m http.server 8000`). Ein Datei-Doppelklick (`file://`) reicht nicht, weil das Stadion-Modul per ES-Import geladen wird.
 
 ---
 
@@ -62,7 +63,8 @@ Einfach die Datei `index.html` direkt im Browser per Doppelklick oder über eine
 
 - [ ] Soundeffekte (Schlaggeräusche, Ballaufprall, Netzkontakt, Schiedsrichteransagen)
 - [ ] Sound- und Jubelanimationen für Punkte und Asse
-- [ ] Verschiedene Beläge (Sandplatz / Roland Garros, Rasen / Wimbledon)
+- [x] Wimbledon Centre Court (Rasen, Stadion, Retractable Roof)
+- [ ] Weitere Beläge (Sandplatz / Roland Garros, US Open Hartplatz)
 - [x] Touch-Steuerung für mobile Endgeräte (iOS / Android)
 - [ ] Einstellbare KI-Schwierigkeitsgrade (Leicht, Mittel, Profi)
 - [ ] Lokaler 2-Spieler-Modus (Split-Screen oder Dual-Controls)

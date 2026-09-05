@@ -6,8 +6,8 @@
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="theme-color" content="#2a5dca" />
-<title>Three.js Tennis Court - US Open Style</title>
+<meta name="theme-color" content="#003820" />
+<title>Muse Tennis 3D – Wimbledon Centre Court</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&display=swap" rel="stylesheet" />
@@ -21,7 +21,7 @@
   }
   html, body {
     margin: 0; padding: 0; width: 100%; height: 100%; height: 100dvh;
-    overflow: hidden; background: #87a8c8; font-family: system-ui, sans-serif;
+    overflow: hidden; background: #1a3d28; font-family: system-ui, sans-serif;
     touch-action: none; user-select: none; -webkit-user-select: none;
     -webkit-touch-callout: none; overscroll-behavior: none;
     position: fixed; inset: 0;
@@ -149,7 +149,7 @@
   #serveMark { position: absolute; left: 0%; top: -2px; bottom: -2px; width: 5px; background: #fff; border-radius: 3px; }
   #loading {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-    background: #87a8c8; color: white; font-size: 18px; z-index: 20;
+    background: #0f2a1c; color: white; font-size: 18px; z-index: 20;
   }
   #touchPad { display: none; position: absolute; inset: 0; pointer-events: none; z-index: 6; }
   #joyBase {
@@ -322,6 +322,11 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import {
+  createWimbledonStadium,
+  createWimbledonLights,
+  applyWimbledonAtmosphere
+} from './wimbledon-stadium.js';
 
 // ============================================================
 // COURT_DIMENSIONS - Single source of truth for later game logic
@@ -346,8 +351,8 @@ export const COURT_DIMENSIONS = {
   // TODO: picks for game
   playerSpawnZ: 11.885 + 2.0,
   colors: {
-    innerBlue: 0x2a5dca,
-    outerGreen: 0x3a9e4f,
+    innerBlue: 0x4a7c32,
+    outerGreen: 0x3f6d2c,
     groundDark: 0x2e7d43,
     lineWhite: 0xffffff,
     netBlack: 0x111111,
@@ -386,11 +391,11 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 container.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87b5d6);
-scene.fog = new THREE.Fog(0x87b5d6, 60, 160);
+scene.background = new THREE.Color(0x8eb9dc);
+scene.fog = new THREE.Fog(0x9bbfd4, 95, 260);
 
-const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 500);
-camera.position.set(15, 12, 15);
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 600);
+camera.position.set(16, 13, 22);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(0, 0, 0);
@@ -398,29 +403,12 @@ controls.enableDamping = true;
 controls.dampingFactor = 0.06;
 controls.maxPolarAngle = Math.PI / 2 - 0.02;
 controls.minDistance = 5;
-controls.maxDistance = 80;
+controls.maxDistance = 150;
 controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 controls.update();
 
-// ---------- Lights ----------
-function createLights(s) {
-  const hemi = new THREE.HemisphereLight(0xffffff, 0x334433, 0.9);
-  s.add(hemi);
-
-  const sun = new THREE.DirectionalLight(0xffffff, 1.7);
-  sun.position.set(20, 30, 10);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(isTouchPlay() ? 1024 : 2048, isTouchPlay() ? 1024 : 2048);
-  sun.shadow.camera.left = -25;
-  sun.shadow.camera.right = 25;
-  sun.shadow.camera.top = 25;
-  sun.shadow.camera.bottom = -25;
-  sun.shadow.camera.near = 1;
-  sun.shadow.camera.far = 80;
-  sun.shadow.bias = -0.0005;
-  s.add(sun);
-}
-createLights(scene);
+createWimbledonLights(scene);
+applyWimbledonAtmosphere(scene, renderer, controls);
 
 // ---------- Helpers ----------
 function makeNetTexture() {
@@ -466,32 +454,10 @@ export function createTennisCourt(s) {
   const courtGroup = new THREE.Group();
   courtGroup.name = 'courtGroup';
 
-  // 1. Outer green area: 30 (x) x 40 (z) -> run-off included
-  const groundGeo = new THREE.PlaneGeometry(30, 40);
-  const groundMat = new THREE.MeshStandardMaterial({
-    color: D.colors.outerGreen, roughness: 0.95, metalness: 0.0
-  });
-  const groundOuter = new THREE.Mesh(groundGeo, groundMat);
-  groundOuter.rotation.x = -Math.PI / 2;
-  groundOuter.position.y = 0;
-  groundOuter.receiveShadow = true;
-  groundOuter.name = 'groundOuter';
-  courtGroup.add(groundOuter);
+  const stadium = createWimbledonStadium(s, courtGroup, D, { lowDetail: PROBE });
+  s.userData.wimbledonStadium = stadium;
 
-  // 2. Inner blue court: exactly doubles size
-  const blueGeo = new THREE.PlaneGeometry(D.width, D.length);
-  const blueMat = new THREE.MeshStandardMaterial({
-    color: D.colors.innerBlue, roughness: 0.9, metalness: 0.0,
-    polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1
-  });
-  const courtSurface = new THREE.Mesh(blueGeo, blueMat);
-  courtSurface.rotation.x = -Math.PI / 2;
-  courtSurface.position.y = 0.005;
-  courtSurface.receiveShadow = true;
-  courtSurface.name = 'courtSurface';
-  courtGroup.add(courtSurface);
-
-  // 3. White lines, 0.01m above ground
+  // White lines, 0.01m above ground
   const linesGroup = new THREE.Group();
   linesGroup.name = 'linesGroup';
   const lineMat = new THREE.MeshStandardMaterial({
@@ -616,48 +582,6 @@ export function createTennisCourt(s) {
   netGroup.add(strap);
 
   courtGroup.add(netGroup);
-
-  // 5. Simple fence around 30x40 (dark, semi-transparent)
-  const fenceGroup = new THREE.Group();
-  fenceGroup.name = 'fenceGroup';
-  const fenceH = 3.2;
-  const fenceMat = new THREE.MeshStandardMaterial({
-    color: 0x1c2b22, transparent: true, opacity: 0.35,
-    side: THREE.DoubleSide, roughness: 0.9
-  });
-  const poleMat = new THREE.MeshStandardMaterial({ color: 0x2b3a30, roughness: 0.6, metalness: 0.3 });
-
-  function addFenceRun(w, x, z, rotY) {
-    const panel = new THREE.Mesh(new THREE.PlaneGeometry(w, fenceH), fenceMat);
-    panel.position.set(x, fenceH / 2, z);
-    panel.rotation.y = rotY;
-    fenceGroup.add(panel);
-  }
-  // 4 sides at x=±15, z=±20
-  addFenceRun(30, 0, -20, 0);
-  addFenceRun(30, 0,  20, 0);
-  addFenceRun(40, -15, 0, Math.PI / 2);
-  addFenceRun(40,  15, 0, Math.PI / 2);
-
-  // posts every 5m
-  const poleGeo = new THREE.CylinderGeometry(0.06, 0.06, fenceH, 10);
-  for (let x = -15; x <= 15; x += 5) {
-    [-20, 20].forEach(z => {
-      const pole = new THREE.Mesh(poleGeo, poleMat);
-      pole.position.set(x, fenceH / 2, z);
-      pole.castShadow = true;
-      fenceGroup.add(pole);
-    });
-  }
-  for (let z = -20; z <= 20; z += 5) {
-    [-15, 15].forEach(x => {
-      const pole = new THREE.Mesh(poleGeo, poleMat);
-      pole.position.set(x, fenceH / 2, z);
-      pole.castShadow = true;
-      fenceGroup.add(pole);
-    });
-  }
-  courtGroup.add(fenceGroup);
 
   s.add(courtGroup);
   return courtGroup;
@@ -2103,7 +2027,7 @@ function makeRingTexture(dashed) {
 const FX_COLORS = {
   in: 0x7dff7a,
   out: 0xff4d4d,
-  serve: 0x5ceaff,
+  serve: 0xe2b84a,
   default: 0xfff4a8
 };
 
@@ -2229,7 +2153,7 @@ function createGameFeel(s) {
   const boxW = SERVE_BOX.xMax;
   const boxD = SERVE_BOX.zServe;
   const boxMat = new THREE.MeshBasicMaterial({
-    color: 0x7af7ff, transparent: true, opacity: 0,
+    color: 0xfff4c2, transparent: true, opacity: 0,
     depthWrite: false,
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
   });
@@ -2307,7 +2231,7 @@ function createGameFeel(s) {
     boxT = 0;
     box.visible = true;
     box.scale.set(1, 1, 1);
-    tintBox(0x7af7ff, 0xffe566);
+    tintBox(0xfff4c2, 0xe2b84a);
   }
 
   function hideServeBox() {
@@ -2318,7 +2242,7 @@ function createGameFeel(s) {
   }
 
   function pulseServeBox(kind) {
-    if (kind === 'in') { boxMode = 'hit'; boxT = 0; box.visible = true; tintBox(0xe8ffff, 0xffffff); }
+    if (kind === 'in') { boxMode = 'hit'; boxT = 0; box.visible = true; tintBox(0xfffce8, 0xffffff); }
     else if (kind === 'let') { boxMode = 'let'; boxT = 0; box.visible = true; tintBox(0xffffff, 0xfff4a3); }
     else if (kind === 'fault') { boxMode = 'fault'; boxT = 0; box.visible = true; tintBox(0xff6b6b, 0xffffff); }
   }
@@ -2387,13 +2311,13 @@ function createGameFeel(s) {
       boxT += dt;
       boxMat.opacity = 0.62 + Math.sin(boxT * 28) * 0.18;
       edgeMat.opacity = 1;
-      if (boxT >= 0.32) { boxMode = 'idle'; tintBox(0x7af7ff, 0xffe566); }
+      if (boxT >= 0.32) { boxMode = 'idle'; tintBox(0xfff4c2, 0xe2b84a); }
     } else if (boxMode === 'fault') {
       boxT += dt;
       const fade = 1 - Math.min(1, boxT / 0.32);
       boxMat.opacity = 0.62 * fade;
       edgeMat.opacity = fade;
-      if (boxT >= 0.32) { boxMode = 'idle'; tintBox(0x7af7ff, 0xffe566); }
+      if (boxT >= 0.32) { boxMode = 'idle'; tintBox(0xfff4c2, 0xe2b84a); }
     }
 
     if (sparkT < 1) {
@@ -2907,6 +2831,14 @@ function updateScoreboard() {
   setScoreCell(document.getElementById('scoreSets'), `${SCORE.pS} : ${SCORE.aS}`);
   setScoreCell(document.getElementById('scoreGames'), `${SCORE.pG} : ${SCORE.aG}`);
   setScoreCell(document.getElementById('scorePoints'), `${pl} : ${ar}`);
+  const boards = scene.userData.wimbledonStadium;
+  if (boards && boards.syncScore) {
+    boards.syncScore({
+      pName: 'YOU', aName: 'CPU',
+      pS: SCORE.pS, aS: SCORE.aS, pG: SCORE.pG, aG: SCORE.aG,
+      pPts: pl, aPts: ar
+    });
+  }
 }
 function awardPoint(winner, reason, skipPointCallout) {
   if (winner === 'player') SCORE.p++; else SCORE.a++;
