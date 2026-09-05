@@ -670,23 +670,30 @@ function addRoof(root, dims) {
     root.add(m);
   }
 
-  const peak = roofY + 4.6;
+  const peak = roofY + 8.8;
   for (let s = -1; s <= 1; s += 2) {
-    for (let i = -7; i <= 7; i++) {
-      const z = i * 3.55;
+    for (let i = -8; i <= 8; i++) {
+      const z = i * 3.15;
+      const xOuter = s * (openHX + 5.8);
+      const xPeak = s * (openHX - 2.2);
       const xLip = s * openHX;
-      beam(xLip, roofY, z - 1.55, xLip + s * 4.2, peak, z, 0.48);
-      beam(xLip, roofY, z + 1.55, xLip + s * 4.2, peak, z, 0.48);
-      beam(xLip + s * 4.2, peak, z, xLip + s * (sideW * 0.55 + 2), roofY + 0.6, z, 0.36);
-      beam(xLip, roofY, z - 1.55, xLip, roofY, z + 1.55, 0.34);
+      beam(xOuter, roofY - 0.2, z - 1.35, xPeak, peak, z, 0.58);
+      beam(xOuter, roofY - 0.2, z + 1.35, xPeak, peak, z, 0.58);
+      beam(xPeak, peak, z, xLip, roofY + 1.1, z, 0.44);
+      beam(xPeak, peak, z, xPeak, peak, z + 3.15, 0.32);
+      const midY = roofY + (peak - roofY) * 0.48;
+      beam(xOuter, midY, z, xPeak, midY + 1.8, z, 0.24);
+      beam(xLip, roofY + 1.1, z - 1.5, xLip, roofY + 1.1, z + 1.5, 0.28);
     }
   }
   for (let s = -1; s <= 1; s += 2) {
     for (let i = -4; i <= 4; i++) {
-      const x = i * 4.0;
-      const zLip = s * openHZ;
-      beam(x - 1.6, roofY, zLip, x, peak - 0.4, zLip + s * 3.6, 0.3);
-      beam(x + 1.6, roofY, zLip, x, peak - 0.4, zLip + s * 3.6, 0.3);
+      const x = i * 3.9;
+      const zOuter = s * (openHZ + 5.2);
+      const zPeak = s * (openHZ - 2.0);
+      beam(x - 1.7, roofY - 0.2, zOuter, x, peak - 0.6, zPeak, 0.52);
+      beam(x + 1.7, roofY - 0.2, zOuter, x, peak - 0.6, zPeak, 0.52);
+      beam(x, peak - 0.6, zPeak, x, roofY + 1.0, s * openHZ, 0.4);
     }
   }
 
