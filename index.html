@@ -394,7 +394,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xb7cfe0);
 scene.fog = new THREE.Fog(0xc5d6e4, 120, 280);
 
-const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 600);
+const camera = new THREE.PerspectiveCamera(52, window.innerWidth / window.innerHeight, 0.1, 600);
 camera.position.set(16, 13, 22);
 
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -2965,8 +2965,8 @@ window.addEventListener('keydown', (e) => {
   if (e.key.toLowerCase() === 'c') setFollow(!followCam);
 });
 setFollow(followCam);
-const followOffset = new THREE.Vector3(0, 6.8, 10.0);
-const followLook = new THREE.Vector3(0, 1.0, -3.0); // preallocated (no per-frame alloc)
+const followOffset = new THREE.Vector3(0, 5.35, 8.6);
+const followLook = new THREE.Vector3(0, 2.35, -8.5); // preallocated (no per-frame alloc)
 const desiredCam = new THREE.Vector3();
 const desiredTarget = new THREE.Vector3();
 
