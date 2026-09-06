@@ -2275,7 +2275,7 @@ function createGameFeel(s) {
   let ghostPulse = 0;
 
   const aimRing = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.7, 1.7),
+    new THREE.PlaneGeometry(2.4, 2.4),
     new THREE.MeshBasicMaterial({
       map: ringTex, color: 0xffc107, transparent: true, opacity: 0.95,
       depthWrite: false, polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -5
@@ -2284,9 +2284,10 @@ function createGameFeel(s) {
   aimRing.rotation.x = -Math.PI / 2;
   aimRing.position.y = 0.034;
   aimRing.visible = false;
+  aimRing.renderOrder = 4;
   s.add(aimRing);
   const aimDot = new THREE.Mesh(
-    new THREE.CircleGeometry(0.2, 16),
+    new THREE.CircleGeometry(0.26, 16),
     new THREE.MeshBasicMaterial({
       color: 0xfff3a0, transparent: true, opacity: 0.95, depthWrite: false,
       polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -5
@@ -2295,7 +2296,17 @@ function createGameFeel(s) {
   aimDot.rotation.x = -Math.PI / 2;
   aimDot.position.y = 0.036;
   aimDot.visible = false;
+  aimDot.renderOrder = 4;
   s.add(aimDot);
+  const aimGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: flashTex, color: 0xffc107, transparent: true, opacity: 0.8,
+    depthWrite: false, depthTest: true
+  }));
+  aimGlow.scale.set(2.6, 2.6, 1);
+  aimGlow.position.y = 1.05;
+  aimGlow.visible = false;
+  aimGlow.renderOrder = 5;
+  s.add(aimGlow);
   let aimPulse = 0;
 
   const boxW = SERVE_BOX.xMax;
@@ -2373,14 +2384,18 @@ function createGameFeel(s) {
     if (!visible) {
       aimRing.visible = false;
       aimDot.visible = false;
+      aimGlow.visible = false;
       return;
     }
     aimRing.visible = true;
     aimDot.visible = true;
+    aimGlow.visible = true;
     aimRing.position.x = x;
     aimRing.position.z = z;
     aimDot.position.x = x;
     aimDot.position.z = z;
+    aimGlow.position.x = x;
+    aimGlow.position.z = z;
   }
 
   function placeServeBox(side) {
@@ -2462,6 +2477,10 @@ function createGameFeel(s) {
       aimRing.scale.set(a, a, 1);
       aimRing.material.opacity = 0.88 + Math.sin(aimPulse * 5.4) * 0.1;
       aimDot.material.opacity = 0.88 + Math.sin(aimPulse * 5.4) * 0.1;
+      const glow = 0.72 + Math.sin(aimPulse * 5.4) * 0.16;
+      aimGlow.material.opacity = glow;
+      const gs = 2.35 + Math.sin(aimPulse * 5.4) * 0.25;
+      aimGlow.scale.set(gs, gs, 1);
     }
 
     if (boxMode === 'idle') {
