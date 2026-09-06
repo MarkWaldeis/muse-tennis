@@ -45,7 +45,7 @@
     100% { opacity: 0; transform: translate(-50%, -50%) scale(1.02); }
   }
   #info {
-    position: absolute; top: calc(96px + var(--safe-t)); left: calc(12px + var(--safe-l));
+    position: absolute; top: calc(102px + var(--safe-t)); left: calc(12px + var(--safe-l));
     padding: 8px 12px; border-radius: 8px; font-size: 13px; line-height: 1.4;
     max-width: min(268px, calc(100vw - 24px)); z-index: 5;
   }
@@ -55,36 +55,29 @@
     padding: 0; margin: 0; z-index: 5; pointer-events: none;
   }
   .sb-card {
-    min-width: 168px;
-    padding: 7px 10px 8px;
+    display: grid;
+    grid-template-columns: auto minmax(2.8em, 1fr) minmax(3.4em, 1fr) minmax(2.4em, 1fr);
+    column-gap: 10px;
+    row-gap: 3px;
+    align-items: center;
+    padding: 8px 12px 9px;
     border-radius: 10px;
     background: var(--hud-bg);
     color: #fff;
     box-shadow: 0 6px 16px rgba(0,0,0,0.28);
   }
-  .sb-grid {
-    display: grid;
-    grid-template-columns: 2.4em 2.4em 2.8em 2.8em;
-    column-gap: 6px;
-    align-items: center;
-  }
   .sb-head {
-    font-size: 9px; font-weight: 700; letter-spacing: 0.08em;
-    text-transform: uppercase; opacity: 0.62; margin-bottom: 3px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
+    text-transform: uppercase; opacity: 0.68; padding-bottom: 3px;
   }
-  .sb-head span:first-child { opacity: 0; }
-  .sb-head span, .sb-row span { text-align: center; }
+  .sb-head:first-child { opacity: 0; }
+  .sb-card > span { text-align: center; white-space: nowrap; }
   .sb-name { text-align: left !important; font-weight: 800; font-size: 12px; letter-spacing: 0.04em; }
-  .sb-row { min-height: 22px; }
-  .sb-row.you .sb-name { color: #ffe566; }
-  .sb-row.ai {
-    margin-top: 2px; padding-top: 3px;
-    border-top: 1px solid rgba(255,255,255,0.12);
-  }
-  .sb-row.ai .sb-name { color: #c9b8ff; }
+  .sb-you { color: #ffe566; }
+  .sb-name.sb-ai { color: #c9b8ff; }
   .sb-val {
     font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.02em; line-height: 1.45;
   }
   .sb-val.sb-flash { animation: sbFlash 0.7s ease-out; }
   @keyframes sbFlash {
@@ -144,16 +137,14 @@
   html.touch-ui #touchPad { display: block; }
   html.touch-ui #resetBtn { display: block; }
   html.touch-ui #info {
-    top: calc(78px + var(--safe-t)); font-size: 11px; max-width: min(220px, 46vw); padding: 6px 8px;
+    top: calc(86px + var(--safe-t)); font-size: 11px; max-width: min(220px, 46vw); padding: 6px 8px;
   }
   html.touch-ui #score {
     top: calc(8px + var(--safe-t)); left: calc(8px + var(--safe-l));
   }
-  html.touch-ui .sb-card { min-width: 150px; padding: 6px 8px 7px; }
-  html.touch-ui .sb-grid { grid-template-columns: 2.1em 2.1em 2.5em 2.5em; column-gap: 4px; }
+  html.touch-ui .sb-card { padding: 7px 10px 8px; column-gap: 8px; }
   html.touch-ui .sb-name { font-size: 11px; }
   html.touch-ui .sb-val { font-size: 13px; }
-  html.touch-ui .sb-row { min-height: 20px; }
   html.touch-ui #status {
     top: calc(48px + var(--safe-t)); left: auto; right: calc(8px + var(--safe-r));
     transform: none; bottom: auto; font-size: 11px; max-width: min(48vw, 200px);
@@ -289,24 +280,18 @@
 <div id="status">Ballwechsel: 0</div>
 <div id="score" aria-live="polite" aria-label="Spielstand">
   <div class="sb-card">
-    <div class="sb-grid sb-head" aria-hidden="true">
-      <span></span>
-      <span>Sätze</span>
-      <span>Spiele</span>
-      <span>Pkt</span>
-    </div>
-    <div class="sb-grid sb-row you">
-      <span class="sb-name">Du</span>
-      <span class="sb-val" id="scoreSetsP">0</span>
-      <span class="sb-val" id="scoreGamesP">0</span>
-      <span class="sb-val" id="scorePointsP">0</span>
-    </div>
-    <div class="sb-grid sb-row ai">
-      <span class="sb-name">KI</span>
-      <span class="sb-val" id="scoreSetsA">0</span>
-      <span class="sb-val" id="scoreGamesA">0</span>
-      <span class="sb-val" id="scorePointsA">0</span>
-    </div>
+    <span class="sb-head" aria-hidden="true"></span>
+    <span class="sb-head">Sätze</span>
+    <span class="sb-head">Spiele</span>
+    <span class="sb-head">Pkt</span>
+    <span class="sb-name sb-you">Du</span>
+    <span class="sb-val" id="scoreSetsP">0</span>
+    <span class="sb-val" id="scoreGamesP">0</span>
+    <span class="sb-val" id="scorePointsP">0</span>
+    <span class="sb-name sb-ai">KI</span>
+    <span class="sb-val" id="scoreSetsA">0</span>
+    <span class="sb-val" id="scoreGamesA">0</span>
+    <span class="sb-val" id="scorePointsA">0</span>
   </div>
 </div>
 <div id="callout" aria-hidden="true"></div>
