@@ -14,7 +14,7 @@ Ein interaktives 3D-Tennisspiel direkt im Browser, entwickelt mit **Three.js** a
 
 | Taste / Aktion | Funktion |
 |---|---|
-| **W, A, S, D** / **Stick** | Laufen **und** den goldenen Zielring schieben (W/vorne = tiefer, S/hinten = kürzer, A/D = quer). Das Ziel bleibt stehen, wenn du loslässt. |
+| **W, A, S, D** / **Stick** | Laufen. Den goldenen Zielring schiebst du beim Aufschlag, im Schwung oder wenn du fast stillstehst; im Sprint bleibt das Ziel stehen. W/vorne = tiefer, S/hinten = kürzer, A/D = quer. |
 | **LEERTASTE** / **SCHLAG-Knopf** | **Aufschlag:** Ball hochwerfen & im grünen Bereich schlagen (Ring im Aufschlagfeld)<br>**Rallye:** Ball schlagen – er landet auf dem goldenen Ring |
 | **C** / **📷 Cam** | Kamera wechseln (Follow-Cam an/aus – Orbit-Kamera mit Maus/Finger steuerbar) |
 | **R** / **↻ Neu** | Ballwechsel / Aufschlag neu starten (Safety Reset) |
@@ -30,7 +30,7 @@ Ein interaktives 3D-Tennisspiel direkt im Browser, entwickelt mit **Three.js** a
 - 🎯 **Sichtbares Zielen:** Goldener Lande-Ring auf der gegnerischen Hälfte. WASD bzw. Stick schieben das Ziel; es bleibt beim Loslassen stehen. Beim Aufschlag klebt der Ring im diagonalen Aufschlagfeld, der Timing-Balken steuert Tempo und Genauigkeit.
 - 🎯 **Aufschlag-Mechanik:** Interaktives Aufschlag-Minigame mit Ballwurf und Sweet-Spot Timing-Balken – dieselben Ready/Toss/Strike/Follow-Animationen wie zuvor, jetzt auf dem Rasen hinter der Grundlinie.
 - ⚡ **Ballphysik & Rallye:** Schwerkraft, Luftwiderstand, Netzkollision, Doppeldotz- und Aus-Erkennung.
-- 🤖 **KI-Gegner:** Reagiert auf Bälle, positioniert sich dynamisch, führt Grundlinienschläge aus und macht realistische Split-Steps.
+- 🤖 **KI-Gegner:** Drei Stärken (Leicht / Mittel / Profi). Spielt meist ins offene Feld, jagt klare Aus-Bälle nicht und geht nach dem Schlag zurück.
 - 🎾 **Automatische Schlagwahl:** Spieler erkennt Ballposition und führt automatisch Vorhand- oder Rückhandschwünge aus.
 - 📊 **Tennis-Zählwerk:** Echte Zählweise (0, 15, 30, 40, Einstand, Vorteil, Spiele, Sätze) mit wechselnder Aufschlagseite.
 - 🎥 **Dual-Kamera-System:** Dynamische Follow-Kamera hinter dem Spieler oder freie Orbit-Kamera zur Stadionübersicht.
@@ -67,5 +67,5 @@ Einfach die Datei `index.html` über einen lokalen Webserver öffnen (z. B. VS C
 - [x] Wimbledon Centre Court (Rasen, Stadion, Retractable Roof)
 - [ ] Weitere Beläge (Sandplatz / Roland Garros, US Open Hartplatz)
 - [x] Touch-Steuerung für mobile Endgeräte (iOS / Android)
-- [ ] Einstellbare KI-Schwierigkeitsgrade (Leicht, Mittel, Profi)
+- [x] Einstellbare KI-Schwierigkeitsgrade (Leicht, Mittel, Profi)
 - [ ] Lokaler 2-Spieler-Modus (Split-Screen oder Dual-Controls)

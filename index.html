@@ -209,7 +209,7 @@
     margin: 0 0 16px; opacity: 0.82; font-size: 14px;
   }
   .char-picks {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;
   }
   .char-card {
     appearance: none; border: 2px solid rgba(255,255,255,0.28);
@@ -220,6 +220,20 @@
   .char-card .char-emoji { display: block; font-size: 32px; line-height: 1.2; }
   .char-card .char-name { display: block; margin-top: 4px; font-weight: 700; letter-spacing: 0.06em; }
   .char-card[aria-pressed="true"] {
+    border-color: #ffe566; background: rgba(255, 229, 102, 0.18);
+  }
+  .menu-label { margin: 0 0 8px; opacity: 0.82; font-size: 14px; }
+  .diff-picks {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 16px;
+  }
+  .diff-card {
+    appearance: none; border: 2px solid rgba(255,255,255,0.28);
+    background: rgba(255,255,255,0.08); color: #fff;
+    border-radius: 10px; padding: 8px 4px; cursor: pointer;
+    font: inherit; font-size: 13px; font-weight: 700; letter-spacing: 0.04em;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .diff-card[aria-pressed="true"] {
     border-color: #ffe566; background: rgba(255, 229, 102, 0.18);
   }
   #startBtn {
@@ -268,12 +282,18 @@
         <span class="char-name">Otter</span>
       </button>
     </div>
+    <p class="menu-label">KI-Stärke</p>
+    <div class="diff-picks" role="group" aria-label="KI-Stärke">
+      <button type="button" class="diff-card" data-difficulty="easy" aria-pressed="false">Leicht</button>
+      <button type="button" class="diff-card" data-difficulty="medium" aria-pressed="true">Mittel</button>
+      <button type="button" class="diff-card" data-difficulty="pro" aria-pressed="false">Profi</button>
+    </div>
     <button type="button" id="startBtn">Starten</button>
   </div>
 </div>
 <div id="info">
-  <span class="desk">🎾 Tennis – Aufschlag & Rally<br>WASD: laufen + Ziel • Space: Aufschlag/Schlag • goldener Ring = Landung • R: neu • C: Cam</span>
-  <span class="mob">🎾 Stick: laufen + Ziel • Knopf: Aufschlag/Schlag • Ring = Landung<br>↻ neu • 📷 Kamera</span>
+  <span class="desk">🎾 Tennis – Aufschlag & Rally<br>WASD: laufen • Zielring bei Stand/Schwung/Aufschlag • Space: Schlag • R: neu • C: Cam</span>
+  <span class="mob">🎾 Stick: laufen • Stand/Schwung zielt • Knopf: Schlag • Ring = Landung<br>↻ neu • 📷 Kamera</span>
 </div>
 <button id="camBtn" type="button">📷 Follow-Cam: AN</button>
 <button id="resetBtn" type="button">↻ Neu</button>
@@ -621,6 +641,7 @@ const CHARACTERS = {
 };
 const characterGltf = { bird: null, otter: null };
 let selectedCharacter = 'bird';
+let selectedDifficulty = 'medium';
 let mascotGltf = null;
 
 function characterDef(id) {
@@ -1680,6 +1701,7 @@ export function createPlayer(s, opts = {}) {
   return {
     group, root, update, swing, playStroke, advanceStroke, noteBall, splitStep, velocity: vel,
     strokeType, strokeTime, contactPoint,
+    moveSpeed() { return Math.hypot(vel.x, vel.z); },
     applyTennisPose, captureRig, blendRig, keepRacketClear, sampleRacketClearance,
     joints: { root, torso, head: headGroup, armL, armR, legL, legR, racket, fistL, fistR }
   };
@@ -1699,6 +1721,12 @@ export const BALL = {
   bounceDamping: 0.50,
   friction: 0.94
 };
+
+function isRallyOut(x, z) {
+  const pad = BALL.radius;
+  return Math.abs(x) > COURT_DIMENSIONS.halfSingles + pad
+      || Math.abs(z) > COURT_DIMENSIONS.halfLength + pad;
+}
 
 function makeBallTexture() {
   const c = document.createElement('canvas');
@@ -1801,9 +1829,8 @@ export function createBall(s) {
       velocity.z *= BALL.friction;
       bouncesSinceHit++;
       const side = group.position.z > 0 ? 'player' : 'ai';
-      const out = Math.abs(group.position.x) > 5.9 || Math.abs(group.position.z) > 12.4;
+      const out = isRallyOut(group.position.x, group.position.z);
       bounceEvent = { x: group.position.x, z: group.position.z, side, out, n: bouncesSinceHit };
-      // TODO (game): strict out-call vs singles/doubles lines + let-calls
     }
 
     // Cute spin + trail
@@ -1940,16 +1967,47 @@ export function createHitSync(actor, ball) {
 // ============================================================
 // OPPONENT AI - drives a second chibi via virtual input
 // States: READY(home) -> TRACK(predicted landing) -> HIT -> RECOVER
-// TODO (game): difficulty levels, error chance by pressure, serve return,
-//   lob/smash recognition, stamina
 // ============================================================
+const AI_PRESETS = {
+  easy: {
+    speed: 4.6, reach: 2.15, error: 1.05, outChance: 0.16, corner: 0.12,
+    recover: 0.75, flightMin: 1.18, flightMax: 1.38
+  },
+  medium: {
+    speed: 6.0, reach: 2.4, error: 0.32, outChance: 0.05, corner: 0.42,
+    recover: 0.5, flightMin: 1.05, flightMax: 1.22
+  },
+  pro: {
+    speed: 7.15, reach: 2.55, error: 0.1, outChance: 0.02, corner: 0.78,
+    recover: 0.32, flightMin: 0.92, flightMax: 1.08
+  }
+};
+
 export const AI = {
   speed: 6.0,
   reach: 2.4,
-  error: 0.45,
+  error: 0.32,
+  outChance: 0.05,
+  corner: 0.42,
+  recover: 0.5,
+  flightMin: 1.05,
+  flightMax: 1.22,
   home: new THREE.Vector3(0, 0, -11.5),
   hitCooldown: 0.6
 };
+
+function applyAIDifficulty(id) {
+  const p = AI_PRESETS[id] || AI_PRESETS.medium;
+  selectedDifficulty = AI_PRESETS[id] ? id : 'medium';
+  AI.speed = p.speed;
+  AI.reach = p.reach;
+  AI.error = p.error;
+  AI.outChance = p.outChance;
+  AI.corner = p.corner;
+  AI.recover = p.recover;
+  AI.flightMin = p.flightMin;
+  AI.flightMax = p.flightMax;
+}
 
 export function createOpponentAI(opp, ball) {
   const aiInput = { x: 0, z: 0 };
@@ -1957,28 +2015,43 @@ export function createOpponentAI(opp, ball) {
   const launchAt = new THREE.Vector3();
   let cooldown = 0;
   let pendingTarget = null;
+  let recoverT = 0;
 
   function pickTarget() {
-    // Corners on player side, small error can cause outs (fun + TODO scoring)
-    const cornerX = (Math.random() < 0.5 ? -1 : 1) * (2.2 + Math.random() * 2.4);
-    return new THREE.Vector3(
-      THREE.MathUtils.clamp(cornerX + (Math.random() - 0.5) * 2 * AI.error, -6.5, 6.5),
-      BALL.radius,
-      6.2 + Math.random() * 5.0 + (Math.random() - 0.5) * AI.error
-    );
+    const px = player ? player.group.position.x : 0;
+    const open = px === 0 ? (Math.random() < 0.5 ? -1 : 1) : -Math.sign(px);
+    const goLine = Math.random() < 0.28;
+    const side = goLine ? (px === 0 ? open : Math.sign(px) || open) : open;
+    const wide = Math.random() < AI.corner;
+    const xMax = COURT_DIMENSIONS.halfSingles - 0.18;
+    let x = side * (wide ? xMax - 0.12 : 1.15 + Math.random() * 1.85);
+    x += (Math.random() - 0.5) * 2 * AI.error;
+    let z = 5.5 + Math.random() * 5.4;
+    if (Math.random() < 0.22) z = 3.6 + Math.random() * 2.1;
+    z += (Math.random() - 0.5) * AI.error;
+    if (Math.random() < AI.outChance) {
+      x = side * (COURT_DIMENSIONS.halfSingles + 0.28 + Math.random() * 0.45);
+    } else {
+      x = THREE.MathUtils.clamp(x, -xMax, xMax);
+      z = THREE.MathUtils.clamp(z, 3.5, COURT_DIMENSIONS.halfLength - 0.28);
+    }
+    return new THREE.Vector3(x, BALL.radius, z);
   }
 
   function update(dt) {
     cooldown = Math.max(0, cooldown - dt);
+    recoverT = Math.max(0, recoverT - dt);
     const bp = ball.mesh.position;
     const op = opp.group.position;
+    const land = ball.predictLanding();
+    const landOurs = land.z < 1.0;
+    const landOut = isRallyOut(land.x, land.z);
 
-    // Where to run? Chase predicted landing if ball is ours, else go home.
     let tx = AI.home.x, tz = AI.home.z;
     const chasing = ball.velocity.z < -0.5 && bp.z > -2;
-    if (bp.z < 1.0 || chasing) {
-      const land = ball.predictLanding();
-      if (land.z < 1.0) { tx = land.x; tz = land.z - 0.7; }
+    if (recoverT <= 0 && (bp.z < 1.0 || chasing) && landOurs && !landOut) {
+      tx = land.x;
+      tz = land.z - 0.7;
     }
     tx = THREE.MathUtils.clamp(tx, -9, 9);
     tz = THREE.MathUtils.clamp(tz, -17, -0.5);
@@ -1986,34 +2059,32 @@ export function createOpponentAI(opp, ball) {
     aiInput.z = THREE.MathUtils.clamp((tz - op.z) * 0.9, -1, 1);
     const l = Math.hypot(aiInput.x, aiInput.z);
     if (l > 1) { aiInput.x /= l; aiInput.z /= l; }
-    // Plant the feet once the swing is committed (no drift under the stroke)
     const ev = opp.update(dt, sync.pending ? AI_STILL : aiInput);
     sync.steer(dt);
 
-    // Contact frame reached -> the committed ball leaves the racket head
     if (ev.contact && sync.launch(launchAt)) {
       ball.hitter = 'ai';
-      ball.hit(launchAt.clone(), pendingTarget || pickTarget(), 1.05 + Math.random() * 0.20);
+      const flight = AI.flightMin + Math.random() * Math.max(0, AI.flightMax - AI.flightMin);
+      ball.hit(launchAt.clone(), pendingTarget || pickTarget(), flight);
       pendingTarget = null;
       cooldown = AI.hitCooldown;
+      recoverT = AI.recover;
       return true;
     }
 
-    // Start the swing when the ball is (or will be at contact) in reach on our side.
-    // Never re-hit our own shot: that is the on-court double-hit (same stroke or a
-    // second swing while the ball is still on the strings / going back).
     const returnable = ball.hitter !== 'ai' && ball.velocity.z < 0.8 && bp.z < 0.15;
-    if (cooldown <= 0 && !sync.pending && returnable && sync.inReach(AI.reach, (p) => p.z < 0.15)) {
-      opp.noteBall(bp.x - op.x); // refresh side AFTER the run-up: correct forehand/backhand pick
+    if (cooldown <= 0 && recoverT <= 0 && !sync.pending && returnable && !landOut
+        && sync.inReach(AI.reach, (p) => p.z < 0.15)) {
+      opp.noteBall(bp.x - op.x);
       if (opp.swing() && sync.commit()) {
         pendingTarget = pickTarget();
-        cooldown = AI.hitCooldown; // no double trigger while the swing runs
+        cooldown = AI.hitCooldown;
       }
     }
     return false;
   }
 
-  function cancel() { sync.cancel(); pendingTarget = null; }
+  function cancel() { sync.cancel(); pendingTarget = null; recoverT = 0; }
 
   return { update, cancel, input: aiInput };
 }
@@ -2092,10 +2163,26 @@ function resetAim() {
 
 function updateAim(dt) {
   const mag = Math.hypot(input.x, input.z);
-  if (mag > AIM.dead) {
+  if (mag <= AIM.dead) {
+    clampAim();
+    return;
+  }
+  const swinging = !!(player && player.strokeType && player.strokeType())
+    || !!(playerSync && playerSync.pending);
+  if (servingAim() || swinging) {
     AIM.x += input.x * AIM.speed * dt;
     AIM.z += input.z * AIM.speed * dt;
+    clampAim();
+    return;
   }
+  const spd = player && player.moveSpeed ? player.moveSpeed() : mag * PLAYER.maxSpeed;
+  const planted = spd < 2.4 || mag < 0.45;
+  if (!planted) {
+    clampAim();
+    return;
+  }
+  AIM.x += input.x * AIM.speed * dt;
+  AIM.z += input.z * AIM.speed * dt;
   clampAim();
 }
 
@@ -3014,6 +3101,12 @@ function syncCharacterButtons() {
   });
 }
 
+function syncDifficultyButtons() {
+  document.querySelectorAll('.diff-card').forEach((btn) => {
+    btn.setAttribute('aria-pressed', btn.dataset.difficulty === selectedDifficulty ? 'true' : 'false');
+  });
+}
+
 function selectCharacter(id) {
   characterDef(id);
   selectedCharacter = id;
@@ -3021,15 +3114,24 @@ function selectCharacter(id) {
   spawnPreview();
 }
 
+function selectDifficulty(id) {
+  applyAIDifficulty(id);
+  syncDifficultyButtons();
+}
+
 document.querySelectorAll('.char-card').forEach((btn) => {
   btn.addEventListener('click', () => selectCharacter(btn.dataset.character));
+});
+document.querySelectorAll('.diff-card').forEach((btn) => {
+  btn.addEventListener('click', () => selectDifficulty(btn.dataset.difficulty));
 });
 const startBtn = document.getElementById('startBtn');
 if (startBtn) startBtn.addEventListener('click', () => startMatch());
 
 document.documentElement.classList.add('menu-open');
 selectCharacter(selectedCharacter);
-if (PROBE) window.__museTennis = { camera, scene, fx, renderer, selectCharacter, startMatch, getSelectedCharacter() { return selectedCharacter; } };
+selectDifficulty(selectedDifficulty);
+if (PROBE) window.__museTennis = { camera, scene, fx, renderer, selectCharacter, selectDifficulty, startMatch, getSelectedCharacter() { return selectedCharacter; }, getSelectedDifficulty() { return selectedDifficulty; } };
 
 // ---------- Rally: hitting, aim, reset ----------
 // Every point starts with a serve (side toggles via SERVE.points).
@@ -3285,7 +3387,8 @@ renderer.setAnimationLoop(() => {
   if (serve.isActive()) {
     serve.update(dt); // serve owns player animation + ball (ready/toss/strike/follow)
   } else {
-    const ev = player.update(dt);
+    const planted = !!(playerSync && playerSync.pending) || !!player.strokeType();
+    const ev = player.update(dt, planted ? { x: 0, z: 0 } : undefined);
     if (ev.started) armPlayerHit();   // Space -> swing started -> commit if in reach
     playerSync.steer(dt);             // ball curves into the racket head
     if (ev.contact) firePlayerHit();  // contact frame -> ball leaves the racket
