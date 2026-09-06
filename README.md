@@ -15,7 +15,7 @@ Ein interaktives 3D-Tennisspiel direkt im Browser, entwickelt mit **Three.js** a
 | Taste / Aktion | Funktion |
 |---|---|
 | **W, A, S, D** / **Stick** | Laufen. Den goldenen Zielring schiebst du beim Aufschlag, im Schwung oder wenn du fast stillstehst; im Sprint bleibt das Ziel stehen. W/vorne = tiefer, S/hinten = kürzer, A/D = quer. |
-| **LEERTASTE** / **SCHLAG-Knopf** | **Aufschlag:** Ball hochwerfen & im grünen Bereich schlagen (Ring im Aufschlagfeld)<br>**Rallye:** Ball schlagen – er landet auf dem goldenen Ring |
+| **LEERTASTE** / **SCHLAG-Knopf** | **Aufschlag:** Ball hochwerfen & im grünen Bereich schlagen (Ring im Aufschlagfeld)<br>**Rallye:** Ball schlagen – früh und gesetzt ein flacher Drive, spät ein hoher Float; Landung auf dem goldenen Ring |
 | **C** / **📷 Cam** | Kamera wechseln (Follow-Cam an/aus – Orbit-Kamera mit Maus/Finger steuerbar) |
 | **R** / **↻ Neu** | Ballwechsel / Aufschlag neu starten (Safety Reset) |
 | **Linksklick + Ziehen** | Kamera um den Court rotieren (wenn Follow-Cam aus oder ergänzend) |
@@ -30,7 +30,7 @@ Ein interaktives 3D-Tennisspiel direkt im Browser, entwickelt mit **Three.js** a
 - 🏟️ **Wimbledon Centre Court:** Rasenplatz nach ITF-Maßen (Einzelfeld, Doppelfeld, Aufschlagfelder, Baseline, Netz mit realistischem Durchhang) in einer Stadion-Schüssel mit dunkelgrünen Sitzreihen, Royal Box, Union Jack, digitalem Scoreboard, Schiedsrichterstuhl und teilweise geöffnetem Retractable Roof.
 - 🎯 **Sichtbares Zielen:** Goldener Lande-Ring auf der gegnerischen Hälfte. WASD bzw. Stick schieben das Ziel; es bleibt beim Loslassen stehen. Beim Aufschlag klebt der Ring im diagonalen Aufschlagfeld, der Timing-Balken steuert Tempo und Genauigkeit.
 - 🎯 **Aufschlag-Mechanik:** Interaktives Aufschlag-Minigame mit Ballwurf und Sweet-Spot Timing-Balken – dieselben Ready/Toss/Strike/Follow-Animationen wie zuvor, jetzt auf dem Rasen hinter der Grundlinie.
-- ⚡ **Ballphysik & Rallye:** Schwerkraft, Luftwiderstand, Netzkollision, Doppeldotz- und Aus-Erkennung.
+- ⚡ **Ballphysik & Rallye:** Schwerkraft, Luftwiderstand, Netzkollision, Doppeldotz- und Aus-Erkennung. Früh am Ball = durchgezogener Drive, spät und gestreckt = hoher, weicher Float.
 - 🤖 **KI-Gegner:** Drei Stärken (Leicht / Mittel / Profi). Spielt meist ins offene Feld, jagt klare Aus-Bälle nicht und geht nach dem Schlag zurück.
 - 🎾 **Automatische Schlagwahl:** Spieler erkennt Ballposition und führt automatisch Vorhand- oder Rückhandschwünge aus.
 - 📊 **Tennis-Zählwerk:** Echte Zählweise (0, 15, 30, 40, Einstand, Vorteil, Spiele, Sätze) mit wechselnder Aufschlagseite.
