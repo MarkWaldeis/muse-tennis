@@ -2275,9 +2275,9 @@ function createGameFeel(s) {
   let ghostPulse = 0;
 
   const aimRing = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.45, 1.45),
+    new THREE.PlaneGeometry(1.7, 1.7),
     new THREE.MeshBasicMaterial({
-      map: ringTex, color: 0xffe566, transparent: true, opacity: 0.82,
+      map: ringTex, color: 0xffc107, transparent: true, opacity: 0.95,
       depthWrite: false, polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -5
     })
   );
@@ -2286,9 +2286,9 @@ function createGameFeel(s) {
   aimRing.visible = false;
   s.add(aimRing);
   const aimDot = new THREE.Mesh(
-    new THREE.CircleGeometry(0.16, 16),
+    new THREE.CircleGeometry(0.2, 16),
     new THREE.MeshBasicMaterial({
-      color: 0xfff4c2, transparent: true, opacity: 0.9, depthWrite: false,
+      color: 0xfff3a0, transparent: true, opacity: 0.95, depthWrite: false,
       polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -5
     })
   );
@@ -2458,10 +2458,10 @@ function createGameFeel(s) {
 
     if (aimRing.visible) {
       aimPulse += dt;
-      const a = 0.94 + Math.sin(aimPulse * 5.4) * 0.08;
+      const a = 0.96 + Math.sin(aimPulse * 5.4) * 0.08;
       aimRing.scale.set(a, a, 1);
-      aimRing.material.opacity = 0.72 + Math.sin(aimPulse * 5.4) * 0.14;
-      aimDot.material.opacity = 0.78 + Math.sin(aimPulse * 5.4) * 0.16;
+      aimRing.material.opacity = 0.88 + Math.sin(aimPulse * 5.4) * 0.1;
+      aimDot.material.opacity = 0.88 + Math.sin(aimPulse * 5.4) * 0.1;
     }
 
     if (boxMode === 'idle') {
