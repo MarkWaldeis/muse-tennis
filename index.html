@@ -272,8 +272,8 @@
   </div>
 </div>
 <div id="info">
-  <span class="desk">🎾 Tennis – Aufschlag & Rally<br>WASD: laufen • Space: Aufschlag/Schlag (Vorhand/Rückhand auto) • R: neu • C: Cam</span>
-  <span class="mob">🎾 Stick: laufen • großer Knopf: Aufschlag/Schlag<br>↻ neu • 📷 Kamera</span>
+  <span class="desk">🎾 Tennis – Aufschlag & Rally<br>WASD: laufen + Ziel • Space: Aufschlag/Schlag • goldener Ring = Landung • R: neu • C: Cam</span>
+  <span class="mob">🎾 Stick: laufen + Ziel • Knopf: Aufschlag/Schlag • Ring = Landung<br>↻ neu • 📷 Kamera</span>
 </div>
 <button id="camBtn" type="button">📷 Follow-Cam: AN</button>
 <button id="resetBtn" type="button">↻ Neu</button>
@@ -2050,6 +2050,68 @@ const SERVE_TOSS_V0 = 6.2;   // toss up-speed -> apex ~2.15m from the ~1.1m rele
 // apex lands on the strings instead of above the frame.
 const SERVE_BOX = { xMax: 4.115, zServe: 6.4 }; // singles box limits
 
+// Sticky landing aim: WASD/stick nudges a court target that stays when released.
+const AIM = { x: 0, z: -8.5, speed: 9, dead: 0.16 };
+const AIM_RALLY = {
+  xMax: COURT_DIMENSIONS.halfSingles - 0.18,
+  zNear: -3.5,
+  zDeep: -(COURT_DIMENSIONS.halfLength - 0.28)
+};
+
+function servingAim() {
+  if (!serve) return false;
+  const mode = serve.getMode();
+  return mode === 'ready' || mode === 'toss';
+}
+
+function clampAim() {
+  if (servingAim()) {
+    const sign = SERVE.side === 'deuce' ? -1 : 1;
+    const xMin = sign < 0 ? -(SERVE_BOX.xMax - 0.18) : 0.22;
+    const xMax = sign < 0 ? -0.22 : (SERVE_BOX.xMax - 0.18);
+    AIM.x = THREE.MathUtils.clamp(AIM.x, xMin, xMax);
+    AIM.z = THREE.MathUtils.clamp(AIM.z, -(SERVE_BOX.zServe - 0.22), -0.35);
+    return;
+  }
+  AIM.x = THREE.MathUtils.clamp(AIM.x, -AIM_RALLY.xMax, AIM_RALLY.xMax);
+  AIM.z = THREE.MathUtils.clamp(AIM.z, AIM_RALLY.zDeep, AIM_RALLY.zNear);
+}
+
+function resetAim() {
+  if (servingAim()) {
+    const sign = SERVE.side === 'deuce' ? -1 : 1;
+    AIM.x = sign * 2.05;
+    AIM.z = -3.6;
+  } else {
+    const px = player ? player.group.position.x : 0;
+    AIM.x = THREE.MathUtils.clamp(-px * 0.35, -AIM_RALLY.xMax, AIM_RALLY.xMax);
+    AIM.z = -8.5;
+  }
+  clampAim();
+}
+
+function updateAim(dt) {
+  const mag = Math.hypot(input.x, input.z);
+  if (mag > AIM.dead) {
+    AIM.x += input.x * AIM.speed * dt;
+    AIM.z += input.z * AIM.speed * dt;
+  }
+  clampAim();
+}
+
+function playerCanAim() {
+  if (!serve || !ball) return false;
+  const mode = serve.getMode();
+  if (mode === 'ready' || mode === 'toss') return true;
+  if (mode !== 'off') return false;
+  return ball.hitter !== 'player';
+}
+
+function playerAimTarget() {
+  clampAim();
+  return new THREE.Vector3(AIM.x, BALL.radius, AIM.z);
+}
+
 function makeFlashTexture() {
   const c = document.createElement('canvas');
   c.width = c.height = 128;
@@ -2095,7 +2157,7 @@ const FX_COLORS = {
 
 function noopFx() {
   return {
-    update() {}, spawnBounce() {}, setGhost() {},
+    update() {}, spawnBounce() {}, setGhost() {}, setAim() {},
     showServeBox() {}, hideServeBox() {}, pulseServeBox() {},
     sparkAt() {}, callout() {}, sound() {}, kick() {}
   };
@@ -2212,6 +2274,30 @@ function createGameFeel(s) {
   s.add(ghost);
   let ghostPulse = 0;
 
+  const aimRing = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.45, 1.45),
+    new THREE.MeshBasicMaterial({
+      map: ringTex, color: 0xffe566, transparent: true, opacity: 0.82,
+      depthWrite: false, polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -5
+    })
+  );
+  aimRing.rotation.x = -Math.PI / 2;
+  aimRing.position.y = 0.034;
+  aimRing.visible = false;
+  s.add(aimRing);
+  const aimDot = new THREE.Mesh(
+    new THREE.CircleGeometry(0.16, 16),
+    new THREE.MeshBasicMaterial({
+      color: 0xfff4c2, transparent: true, opacity: 0.9, depthWrite: false,
+      polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -5
+    })
+  );
+  aimDot.rotation.x = -Math.PI / 2;
+  aimDot.position.y = 0.036;
+  aimDot.visible = false;
+  s.add(aimDot);
+  let aimPulse = 0;
+
   const boxW = SERVE_BOX.xMax;
   const boxD = SERVE_BOX.zServe;
   const boxMat = new THREE.MeshBasicMaterial({
@@ -2281,6 +2367,20 @@ function createGameFeel(s) {
     ghost.visible = true;
     ghost.position.x = x;
     ghost.position.z = z;
+  }
+
+  function setAim(x, z, visible) {
+    if (!visible) {
+      aimRing.visible = false;
+      aimDot.visible = false;
+      return;
+    }
+    aimRing.visible = true;
+    aimDot.visible = true;
+    aimRing.position.x = x;
+    aimRing.position.z = z;
+    aimDot.position.x = x;
+    aimDot.position.z = z;
   }
 
   function placeServeBox(side) {
@@ -2356,6 +2456,14 @@ function createGameFeel(s) {
       ghost.material.opacity = 0.42 + Math.sin(ghostPulse * 6.5) * 0.12;
     }
 
+    if (aimRing.visible) {
+      aimPulse += dt;
+      const a = 0.94 + Math.sin(aimPulse * 5.4) * 0.08;
+      aimRing.scale.set(a, a, 1);
+      aimRing.material.opacity = 0.72 + Math.sin(aimPulse * 5.4) * 0.14;
+      aimDot.material.opacity = 0.78 + Math.sin(aimPulse * 5.4) * 0.16;
+    }
+
     if (boxMode === 'idle') {
       boxIdle += dt;
       boxMat.opacity = 0.50 + Math.sin(boxIdle * 3.2) * 0.10;
@@ -2403,7 +2511,7 @@ function createGameFeel(s) {
   }
 
   return {
-    update, spawnBounce, setGhost,
+    update, spawnBounce, setGhost, setAim,
     showServeBox, hideServeBox, pulseServeBox,
     sparkAt, callout, sound: sfx.sound, kick, applyKick
   };
@@ -2525,28 +2633,29 @@ export function createServeController(pl, bl, s, fx) {
   }
 
   function serveTarget(q) {
-    // Diagonal box: deuce -> x<0 on AI side, ad -> x>0
+    // Land on the sticky aim ring; timing only changes flight and scatter.
+    clampAim();
     const sign = SERVE.side === 'deuce' ? -1 : 1;
-    let tx, tz, flight;
+    let tx = AIM.x;
+    let tz = AIM.z;
+    let flight = 1.0;
     if (!SERVE.firstServe) {
-      // 2nd serve: safe middle of box, high arc, forgiving
-      const qq = Math.max(q, 0.5);
-      tx = sign * (1.2 + Math.random() * 1.6);
-      tz = -(2.4 + Math.random() * 2.6);
       flight = 1.15;
+      const err = THREE.MathUtils.lerp(0.12, 0.5, 1 - THREE.MathUtils.clamp(q, 0.5, 1));
+      tx += (Math.random() - 0.5) * 2 * err;
+      tz += (Math.random() - 0.5) * 2 * err;
+      tx = THREE.MathUtils.clamp(tx, sign < 0 ? -(SERVE_BOX.xMax - 0.28) : 0.32, sign < 0 ? -0.32 : SERVE_BOX.xMax - 0.28);
+      tz = THREE.MathUtils.clamp(tz, -(SERVE_BOX.zServe - 0.38), -0.55);
     } else if (q >= 0.7) {
-      tx = sign * (2.6 + Math.random() * 1.1); // corner attack
-      tz = -(4.2 + Math.random() * 1.6);
       flight = q > 0.9 ? 0.90 : 0.95;
     } else if (q >= 0.35) {
-      tx = sign * (1.2 + Math.random() * 1.8); // safe
-      tz = -(2.5 + Math.random() * 2.5);
       flight = 1.05;
+      tx += (Math.random() - 0.5) * 1.1;
+      tz += (Math.random() - 0.5) * 0.9;
     } else {
-      // Shanked timing -> long or wide (fault)
-      if (Math.random() < 0.5) { tx = sign * (1.5 + Math.random() * 2); tz = -(SERVE_BOX.zServe + 0.4 + Math.random() * 1.6); }
-      else { tx = sign * (SERVE_BOX.xMax + 0.4 + Math.random() * 1.2); tz = -(2 + Math.random() * 3); }
       flight = 1.0;
+      if (Math.random() < 0.5) tz = -(SERVE_BOX.zServe + 0.5 + Math.random() * 1.4);
+      else tx = sign * (SERVE_BOX.xMax + 0.45 + Math.random() * 1.1);
     }
     return { target: new THREE.Vector3(tx, BALL.radius, tz), flight };
   }
@@ -2992,14 +3101,6 @@ function awardPoint(winner, reason, skipPointCallout) {
   serve.enterReady(msg + ' – neuer Aufschlag, ' + hitHint() + ' = hochwerfen');
 }
 
-// Player aim: direction keys shape the shot, default deep cross-court
-function playerAimTarget() {
-  const p = player.group.position;
-  const x = THREE.MathUtils.clamp(p.x * 0.35 + input.x * 5.0 + (Math.random() - 0.5) * 1.4, -5.2, 5.2);
-  const z = THREE.MathUtils.clamp(-8.5 - input.z * 1.5 + (Math.random() - 0.5) * 1.0, -11.6, -6.0);
-  return new THREE.Vector3(x, BALL.radius, z);
-}
-
 // Swing started (Space): commit the hit if the ball is in reach now or on the contact frame.
 const PLAYER_REACH = 2.4;
 const playerLaunch = new THREE.Vector3();
@@ -3064,10 +3165,12 @@ function startMatch() {
       playerSync.cancel(); ai.cancel();
       const ax = SERVE.side === 'deuce' ? -1.6 : 1.6;
       opponent.group.position.set(ax, 0, -12.4);
+      resetAim();
     },
     onGoodServe() {
       rallyHits = 1;
       refreshStatus('Guter Aufschlag!');
+      resetAim();
     }
   });
   document.documentElement.classList.remove('menu-open');
@@ -3150,6 +3253,8 @@ renderer.setAnimationLoop(() => {
     return;
   }
   pollInput();
+  if (playerCanAim()) updateAim(dt);
+  else clampAim();
   if (hitCaption) {
     const mode = serve.getMode();
     hitCaption.textContent = mode === 'ready' ? 'WERFEN' : mode === 'toss' ? 'TREFFEN' : 'SCHLAG';
@@ -3234,6 +3339,8 @@ renderer.setAnimationLoop(() => {
   } else {
     fx.setGhost(0, 0, false);
   }
+  if (playerCanAim()) fx.setAim(AIM.x, AIM.z, true);
+  else fx.setAim(0, 0, false);
   fx.update(dt);
 
   if (followCam) {
