@@ -25,6 +25,7 @@ Ein interaktives 3D-Tennisspiel direkt im Browser, entwickelt mit **Three.js** a
 
 ## ✨ Features
 
+- 🎬 **3D-Hauptmenü:** Centre Court als Bühne, gewählter Charakter in der Vorschau, Charakter und KI-Stärke als Glas-HUD.
 - 🐣 **Geriggter Mascot-Spieler:** Tripo-Vogel mit Mixamo-Skeleton (Finger, Zehen, Schwanz, Kamm), volumetrischem Skinning und Tennisschläger in der Schlaghand.
 - 🏟️ **Wimbledon Centre Court:** Rasenplatz nach ITF-Maßen (Einzelfeld, Doppelfeld, Aufschlagfelder, Baseline, Netz mit realistischem Durchhang) in einer Stadion-Schüssel mit dunkelgrünen Sitzreihen, Royal Box, Union Jack, digitalem Scoreboard, Schiedsrichterstuhl und teilweise geöffnetem Retractable Roof.
 - 🎯 **Sichtbares Zielen:** Goldener Lande-Ring auf der gegnerischen Hälfte. WASD bzw. Stick schieben das Ziel; es bleibt beim Loslassen stehen. Beim Aufschlag klebt der Ring im diagonalen Aufschlagfeld, der Timing-Balken steuert Tempo und Genauigkeit.

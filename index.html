@@ -185,51 +185,63 @@
   #mainMenu {
     display: none;
     position: absolute; inset: 0; z-index: 25;
-    align-items: flex-start; justify-content: center;
-    padding: calc(28px + var(--safe-t)) 16px calc(24px + var(--safe-b));
-    background: linear-gradient(180deg, rgba(10, 28, 64, 0.55) 0%, rgba(10, 28, 64, 0.12) 42%, rgba(10, 28, 64, 0.45) 100%);
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: stretch;
+    padding: calc(20px + var(--safe-t)) 16px calc(16px + var(--safe-b));
+    background: linear-gradient(180deg, rgba(8, 22, 40, 0.38) 0%, rgba(8, 22, 40, 0.04) 26%, rgba(8, 22, 40, 0.06) 58%, rgba(8, 22, 40, 0.5) 100%);
     pointer-events: none;
   }
   html.menu-open #mainMenu { display: flex; }
-  .menu-card {
+  .menu-top {
+    text-align: center; color: #fff;
+    text-shadow: 0 2px 14px rgba(0,0,0,0.5);
+    pointer-events: none;
+  }
+  .menu-top h1 {
+    margin: 0; font-size: clamp(26px, 6vw, 38px); letter-spacing: 0.16em;
+  }
+  .menu-top p {
+    margin: 6px 0 0; opacity: 0.82; font-size: 14px; letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .menu-dock {
     pointer-events: auto;
-    width: min(420px, calc(100vw - 32px));
-    margin-top: 8vh;
-    padding: 22px 22px 20px;
+    width: min(520px, 100%);
+    margin: 0 auto;
+    padding: 12px 12px 14px;
     border-radius: 16px;
-    background: rgba(12, 28, 62, 0.88);
+    background: rgba(10, 24, 48, 0.58);
     color: #fff;
-    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.38);
-    text-align: center;
-  }
-  .menu-card h1 {
-    margin: 0 0 6px; font-size: clamp(22px, 5vw, 30px); letter-spacing: 0.12em;
-  }
-  .menu-card p {
-    margin: 0 0 16px; opacity: 0.82; font-size: 14px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
   }
   .char-picks {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;
   }
   .char-card {
     appearance: none; border: 2px solid rgba(255,255,255,0.28);
     background: rgba(255,255,255,0.08); color: #fff;
-    border-radius: 12px; padding: 14px 8px; cursor: pointer;
+    border-radius: 12px; padding: 10px 8px; cursor: pointer;
     font: inherit; -webkit-tap-highlight-color: transparent;
   }
-  .char-card .char-emoji { display: block; font-size: 32px; line-height: 1.2; }
-  .char-card .char-name { display: block; margin-top: 4px; font-weight: 700; letter-spacing: 0.06em; }
+  .char-card .char-emoji { display: block; font-size: 26px; line-height: 1.15; }
+  .char-card .char-name { display: block; margin-top: 2px; font-weight: 700; letter-spacing: 0.06em; font-size: 14px; }
   .char-card[aria-pressed="true"] {
     border-color: #ffe566; background: rgba(255, 229, 102, 0.18);
   }
-  .menu-label { margin: 0 0 8px; opacity: 0.82; font-size: 14px; }
+  .menu-diff {
+    display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px;
+  }
+  .menu-label { margin: 0; opacity: 0.78; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
   .diff-picks {
-    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 16px;
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;
   }
   .diff-card {
     appearance: none; border: 2px solid rgba(255,255,255,0.28);
     background: rgba(255,255,255,0.08); color: #fff;
-    border-radius: 10px; padding: 8px 4px; cursor: pointer;
+    border-radius: 10px; padding: 9px 4px; cursor: pointer;
     font: inherit; font-size: 13px; font-weight: 700; letter-spacing: 0.04em;
     -webkit-tap-highlight-color: transparent;
   }
@@ -245,6 +257,9 @@
     -webkit-tap-highlight-color: transparent;
   }
   #startBtn:active { transform: scale(0.98); }
+  html.touch-ui .menu-dock { padding: 12px 12px 16px; }
+  html.touch-ui .char-card { padding: 12px 8px; }
+  html.touch-ui .diff-card { padding: 11px 4px; }
 </style>
 <script>
 (function () {
@@ -269,9 +284,11 @@
 <div id="app"></div>
 <div id="loading">Lade Charaktere…</div>
 <div id="mainMenu">
-  <div class="menu-card">
+  <header class="menu-top">
     <h1>MUSE TENNIS</h1>
-    <p>Charakter auswählen</p>
+    <p>Centre Court</p>
+  </header>
+  <div class="menu-dock">
     <div class="char-picks" role="group" aria-label="Charakter auswählen">
       <button type="button" class="char-card" data-character="bird" aria-pressed="true">
         <span class="char-emoji" aria-hidden="true">🐦</span>
@@ -282,11 +299,13 @@
         <span class="char-name">Otter</span>
       </button>
     </div>
-    <p class="menu-label">KI-Stärke</p>
-    <div class="diff-picks" role="group" aria-label="KI-Stärke">
-      <button type="button" class="diff-card" data-difficulty="easy" aria-pressed="false">Leicht</button>
-      <button type="button" class="diff-card" data-difficulty="medium" aria-pressed="true">Mittel</button>
-      <button type="button" class="diff-card" data-difficulty="pro" aria-pressed="false">Profi</button>
+    <div class="menu-diff">
+      <p class="menu-label">KI-Stärke</p>
+      <div class="diff-picks" role="group" aria-label="KI-Stärke">
+        <button type="button" class="diff-card" data-difficulty="easy" aria-pressed="false">Leicht</button>
+        <button type="button" class="diff-card" data-difficulty="medium" aria-pressed="true">Mittel</button>
+        <button type="button" class="diff-card" data-difficulty="pro" aria-pressed="false">Profi</button>
+      </div>
     </div>
     <button type="button" id="startBtn">Starten</button>
   </div>
@@ -3068,6 +3087,20 @@ let ai = null;
 let serve = null;
 let playerSync = null;
 let previewPlayer = null;
+let previewT = 0;
+let previewIntro = 1;
+
+const MENU_CAM_POS = new THREE.Vector3(4.15, 2.55, 16.6);
+const MENU_CAM_LOOK = new THREE.Vector3(0.1, 1.15, 10.2);
+
+function applyMenuCamera() {
+  camera.position.copy(MENU_CAM_POS);
+  controls.target.copy(MENU_CAM_LOOK);
+  controls.enableRotate = false;
+  controls.enablePan = false;
+  controls.enableZoom = false;
+  controls.update();
+}
 
 function disposeActor(actor) {
   if (!actor || !actor.group) return;
@@ -3088,11 +3121,12 @@ function spawnPreview() {
   disposeActor(previewPlayer);
   previewPlayer = createPlayer(scene, playerOptsFor(selectedCharacter, {
     name: 'preview',
-    spawn: new THREE.Vector3(0, 0, 8)
+    spawn: new THREE.Vector3(0, 0, 11.35)
   }));
-  camera.position.set(2.8, 2.15, 12.4);
-  controls.target.set(0, 1.05, 8);
-  controls.update();
+  previewPlayer.group.scale.setScalar(0.92);
+  previewT = 0;
+  previewIntro = 0;
+  applyMenuCamera();
 }
 
 function syncCharacterButtons() {
@@ -3312,7 +3346,8 @@ let followCam = true;
 const camBtn = document.getElementById('camBtn');
 function syncOrbit() {
   const touch = document.documentElement.classList.contains('touch-ui');
-  const allowOrbit = !touch || !followCam;
+  const menu = document.documentElement.classList.contains('menu-open');
+  const allowOrbit = !menu && (!touch || !followCam);
   controls.enableRotate = allowOrbit;
   controls.enablePan = allowOrbit;
   controls.enableZoom = allowOrbit;
@@ -3345,7 +3380,11 @@ const desiredTarget = new THREE.Vector3();
 // ---------- Resize + Loop ----------
 function resizeView() {
   applyTouchClass();
-  setFollow(followCam);
+  if (!matchStarted && document.documentElement.classList.contains('menu-open')) {
+    applyMenuCamera();
+  } else {
+    setFollow(followCam);
+  }
   const w = window.innerWidth;
   const h = Math.max(1, window.innerHeight);
   camera.aspect = w / h;
@@ -3368,8 +3407,14 @@ renderer.setAnimationLoop(() => {
   }
   if (!matchStarted) {
     input.swingPressed = false;
-    if (previewPlayer) previewPlayer.update(dt, { x: 0, z: 0 });
-    controls.update();
+    if (previewPlayer) {
+      previewPlayer.update(dt, { x: 0, z: 0 });
+      previewT += dt;
+      previewIntro = Math.min(1, previewIntro + dt / 0.28);
+      const sc = 0.92 + previewIntro * 0.08;
+      previewPlayer.group.scale.setScalar(sc);
+      previewPlayer.group.rotation.y = Math.sin(previewT * 0.55) * 0.32;
+    }
     renderer.render(scene, camera);
     return;
   }
