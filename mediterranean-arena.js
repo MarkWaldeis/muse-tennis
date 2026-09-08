@@ -1,5 +1,14 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import {
+  BANDE_GREEN,
+  GROUND_Y,
+  groundLayerPlan,
+  replacementBandeLayout,
+  shouldHideImportedBande,
+  waterSetup,
+  waterVertexOffset
+} from './mediterranean-dressing.js';
 
 export const MEDITERRANEAN = {
   clay: 0xc4784a,
@@ -162,22 +171,6 @@ function addHorizonFill(scene, opts = {}) {
   decorate(sky);
   scene.add(sky);
 
-  const sea = new THREE.Mesh(
-    new THREE.CircleGeometry(260, 64),
-    new THREE.MeshStandardMaterial({
-      map: makeSeaTexture(),
-      roughness: 0.28,
-      metalness: 0.18,
-      color: MEDITERRANEAN.sea
-    })
-  );
-  sea.rotation.x = -Math.PI / 2;
-  sea.position.y = -8.5;
-  sea.name = 'mediterraneanSea';
-  sea.receiveShadow = true;
-  decorate(sea);
-  scene.add(sea);
-
   let land = null;
   if (!opts.imported) {
     land = new THREE.Mesh(
@@ -192,7 +185,7 @@ function addHorizonFill(scene, opts = {}) {
     scene.add(land);
   }
 
-  return { sky, sea, land };
+  return { sky, sea: null, land };
 }
 
 function addClayFloor(courtGroup, D) {
@@ -206,7 +199,7 @@ function addClayFloor(courtGroup, D) {
     })
   );
   apron.rotation.x = -Math.PI / 2;
-  apron.position.y = -0.004;
+  apron.position.y = GROUND_Y.apron;
   apron.receiveShadow = true;
   apron.name = 'groundOuter';
   apron.userData.mapFloor = true;
@@ -225,7 +218,7 @@ function addClayFloor(courtGroup, D) {
     courtMat
   );
   courtSurface.rotation.x = -Math.PI / 2;
-  courtSurface.position.y = 0.005;
+  courtSurface.position.y = GROUND_Y.court;
   courtSurface.receiveShadow = true;
   courtSurface.name = 'courtSurface';
   courtSurface.userData.mapFloor = true;
@@ -236,7 +229,7 @@ function addClayFloor(courtGroup, D) {
     std(MEDITERRANEAN.paving, { roughness: 0.93 })
   );
   paving.rotation.x = -Math.PI / 2;
-  paving.position.y = -0.012;
+  paving.position.y = GROUND_Y.paving;
   paving.receiveShadow = true;
   paving.name = 'mediterraneanPaving';
   paving.userData.mapFloor = true;
@@ -350,13 +343,9 @@ function retuneMaterial(m) {
   if (m.transparent || m.alphaTest > 0) m.side = THREE.DoubleSide;
   const n = `${m.name || ''}`.toLowerCase();
   if (n.includes('ocean') || n.includes('water')) {
-    m.color = new THREE.Color(MEDITERRANEAN.sea);
-    m.roughness = 0.34;
-    m.metalness = 0.06;
-    m.opacity = 1;
-    m.transparent = false;
-    if ('transmission' in m) m.transmission = 0;
-    if ('ior' in m) m.ior = 1.33;
+    // GLB ocean is hidden in favour of the single animated sea.
+    m.opacity = 0;
+    m.transparent = true;
   }
   if (n.includes('limestone') || n.includes('mountain') || n.includes('cliff')) {
     m.roughness = 0.97;
@@ -391,6 +380,93 @@ function hideBuriedMeshes(root) {
     box3.setFromObject(o);
     if (Number.isFinite(box3.max.y) && box3.max.y < -0.6) o.visible = false;
   });
+}
+
+function applyLayerVisibility(root, scene, plan) {
+  const hide = new Set(plan.hide || []);
+  const visit = (obj) => {
+    if (!obj) return;
+    obj.traverse((o) => {
+      if (hide.has(o.name) || shouldHideImportedBande(o.name)) o.visible = false;
+    });
+  };
+  visit(root);
+  visit(scene);
+}
+
+function addUprightBanden(root) {
+  const mat = std(BANDE_GREEN, { roughness: 0.72, metalness: 0.04 });
+  const railMat = std(0xd8c4a8, { roughness: 0.55, metalness: 0.08 });
+  const boards = replacementBandeLayout();
+  const group = new THREE.Group();
+  group.name = 'mediterraneanBanden';
+  decorate(group);
+  for (let i = 0; i < boards.length; i++) {
+    const b = boards[i];
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(b.w, b.h, b.d), mat);
+    mesh.position.set(b.x, b.y, b.z);
+    mesh.rotation.set(b.rx, b.ry, b.rz);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.name = `bandeRight_${i}`;
+    mesh.userData.bandeCorrected = true;
+    group.add(mesh);
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(b.w + 0.02, 0.05, b.d + 0.02), railMat);
+    rail.position.set(b.x, b.h + 0.02, b.z);
+    rail.name = `bandeRail_${i}`;
+    group.add(rail);
+  }
+  root.add(group);
+  return group;
+}
+
+function addAnimatedWater(scene) {
+  const spec = waterSetup();
+  const geo = new THREE.PlaneGeometry(spec.size, spec.size, spec.segments, spec.segments);
+  geo.rotateX(-Math.PI / 2);
+  const pos = geo.attributes.position;
+  const baseY = new Float32Array(pos.count);
+  for (let i = 0; i < pos.count; i++) baseY[i] = pos.getY(i);
+
+  const env = makeGoldenSkyTexture();
+  env.mapping = THREE.EquirectangularReflectionMapping;
+
+  const mat = new THREE.MeshStandardMaterial({
+    map: makeSeaTexture(),
+    color: MEDITERRANEAN.sea,
+    roughness: spec.roughness,
+    metalness: spec.metalness,
+    transparent: spec.transparent,
+    opacity: spec.opacity,
+    envMap: env,
+    envMapIntensity: 1.15,
+    depthWrite: false
+  });
+  const water = new THREE.Mesh(geo, mat);
+  water.position.y = spec.y;
+  water.name = spec.name;
+  water.receiveShadow = true;
+  water.renderOrder = -1;
+  decorate(water);
+  water.userData.waterAnimated = true;
+  water.userData.baseY = baseY;
+  water.onBeforeRender = () => {
+    const t = performance.now() * 0.001;
+    const attr = water.geometry.attributes.position;
+    const rest = water.userData.baseY;
+    for (let i = 0; i < attr.count; i++) {
+      const x = attr.getX(i);
+      const z = attr.getZ(i);
+      attr.setY(i, rest[i] + waterVertexOffset(x, z, t));
+    }
+    attr.needsUpdate = true;
+  };
+  scene.add(water);
+  for (const n of spec.hideDuplicates) {
+    const dup = scene.getObjectByName(n);
+    if (dup) dup.visible = false;
+  }
+  return water;
 }
 
 let cachedGltf = null;
@@ -471,15 +547,17 @@ export function createMediterraneanLights(s) {
 
 export function createMediterraneanArena(scene, courtGroup, D, opts = {}) {
   const lowDetail = !!(opts && opts.lowDetail);
-  addClayFloor(courtGroup, D);
+  const gltf = opts.gltf || cachedGltf;
+  const imported = !!(gltf && gltf.scene);
+  const plan = groundLayerPlan(imported);
+
+  if (plan.addJsCourt) addClayFloor(courtGroup, D);
 
   const root = new THREE.Group();
   root.name = 'mediterraneanArena';
   decorate(root);
 
-  const gltf = opts.gltf || cachedGltf;
-  let imported = false;
-  if (gltf && gltf.scene) {
+  if (imported) {
     const model = gltf.scene.clone(true);
     model.name = 'mediterraneanGltf';
     hideGameplayDuplicates(model);
@@ -487,30 +565,30 @@ export function createMediterraneanArena(scene, courtGroup, D, opts = {}) {
     alignImportedCourt(model);
     hideBuriedMeshes(model);
     root.add(model);
-    imported = true;
   }
   const horizon = addHorizonFill(scene, { imported });
+  applyLayerVisibility(root, scene, plan);
+  addUprightBanden(root);
+  const water = plan.addWater ? addAnimatedWater(scene) : null;
 
-  // Always dress the far field so orbit / follow-cam never frames a hole.
-  // Near villas/trees only when the GLB did not load.
   if (!imported) addNearDressing(root);
   else {
-    // Extra cypress just outside runoff in case the import leaves a gap
-    // along the apron edge.
     const leaf = std(MEDITERRANEAN.cypress, { roughness: 0.8 });
     const bark = std(0x5a3a22, { roughness: 0.95 });
-    for (const [x, z] of [[-12.8, 21.6], [12.8, 21.6], [-12.8, -21.6], [12.8, -21.6]]) {
+    for (const [x, z] of [[-12.8, 21.6], [-12.8, -21.6]]) {
       cyl(root, 0.16, 0.2, 1.0, x, 0.5, z, bark, { seg: 8 });
       cyl(root, 0.2, 0.7, 6.2, x, 4.1, z, leaf, { seg: 9 });
     }
   }
 
   scene.add(root);
+  applyLayerVisibility(root, scene, plan);
 
   return {
     root,
     imported,
     horizon,
+    water,
     id: 'mediterranean',
     syncScore() {}
   };

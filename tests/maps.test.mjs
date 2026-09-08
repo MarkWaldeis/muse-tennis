@@ -13,6 +13,21 @@ import {
   nextMapId,
   parseMapQuery
 } from '../maps.js';
+import {
+  BANDE_X,
+  CLAY_HALF_X,
+  GROUND_Y,
+  bandeUpYFromQuat,
+  correctBandePose,
+  groundLayerPlan,
+  isRightEdgeBande,
+  replacementBandeLayout,
+  shouldHideImportedBande,
+  surfaceShouldBeVisible,
+  visibleDuplicateYConflict,
+  waterSetup,
+  waterVertexOffset
+} from '../mediterranean-dressing.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -85,6 +100,126 @@ test('index.html wires menu map picker without changing court physics', () => {
   assert.match(startMatch, /createHitSync/);
   assert.doesNotMatch(startMatch, /selectedMap/);
   assert.doesNotMatch(startMatch, /mediterranean|wimbledon/i);
+});
+
+test('imported map hides duplicate court/ocean planes at the same Y', () => {
+  const plan = groundLayerPlan(true);
+  assert.equal(plan.addJsCourt, false);
+  assert.equal(plan.addWater, true);
+  assert.equal(plan.waterY, GROUND_Y.water);
+  for (const n of [
+    'mediterraneanSea',
+    'SM_Ocean_Surface',
+    'groundOuter',
+    'courtSurface',
+    'mediterraneanPaving',
+    'SM_Court_PlaySurface',
+    'Court_PlaySurface'
+  ]) {
+    assert.equal(surfaceShouldBeVisible(n, true), false, n);
+  }
+  assert.equal(surfaceShouldBeVisible('SM_Court_Clay_Slab', true), true);
+  assert.ok(GROUND_Y.water < GROUND_Y.paving);
+  assert.ok(GROUND_Y.paving < GROUND_Y.apron);
+  assert.ok(GROUND_Y.apron < GROUND_Y.court);
+  assert.ok(GROUND_Y.court < GROUND_Y.lines);
+
+  const dressed = [
+    { name: 'SM_Court_Clay_Slab', y: GROUND_Y.glbClayTop, visible: true },
+    { name: 'mediterraneanWater', y: GROUND_Y.water, visible: true },
+    { name: 'mediterraneanSea', y: GROUND_Y.water, visible: false },
+    { name: 'SM_Ocean_Surface', y: -22, visible: false },
+    { name: 'courtSurface', y: GROUND_Y.court, visible: false }
+  ];
+  assert.deepEqual(visibleDuplicateYConflict(dressed), []);
+  const stacked = [
+    { name: 'mediterraneanSea', y: -8.5, visible: true },
+    { name: 'SM_Ocean_Surface', y: -8.5, visible: true }
+  ];
+  const conflicts = visibleDuplicateYConflict(stacked);
+  assert.equal(conflicts.length, 1);
+  assert.ok(conflicts[0].names.includes('mediterraneanSea'));
+});
+
+test('tilted right-edge Bande is corrected upright and outside the clay', () => {
+  const tilted = {
+    name: 'SM_Glass_4',
+    x: 8.84,
+    y: 1.1,
+    z: 7.5,
+    qx: 0.5301,
+    qy: -0.5301,
+    qz: -0.468,
+    qw: 0.468,
+    minX: 8.56
+  };
+  assert.equal(isRightEdgeBande(tilted), true);
+  assert.equal(shouldHideImportedBande('SM_Glass_4'), true);
+  assert.equal(shouldHideImportedBande('SM_Rail_0'), true);
+  assert.equal(shouldHideImportedBande('SM_Glass_North'), false);
+  assert.ok(Math.abs(bandeUpYFromQuat(tilted.qx, tilted.qy, tilted.qz, tilted.qw)) < 0.2);
+
+  const pose = correctBandePose(tilted);
+  assert.equal(pose.rx, 0);
+  assert.equal(pose.ry, 0);
+  assert.equal(pose.rz, 0);
+  assert.equal(pose.qx, 0);
+  assert.equal(pose.qy, 0);
+  assert.equal(pose.qz, 0);
+  assert.equal(pose.qw, 1);
+  assert.equal(pose.upY, 1);
+  assert.equal(bandeUpYFromQuat(pose.qx, pose.qy, pose.qz, pose.qw), 1);
+  assert.ok(pose.x >= CLAY_HALF_X + 0.3);
+  assert.equal(pose.x, BANDE_X);
+  assert.equal(pose.z, 7.5);
+  assert.equal(pose.outsideClay, true);
+
+  const boards = replacementBandeLayout();
+  assert.ok(boards.length >= 6);
+  for (const b of boards) {
+    assert.equal(b.rx, 0);
+    assert.equal(b.ry, 0);
+    assert.equal(b.rz, 0);
+    assert.ok(b.x > CLAY_HALF_X);
+    assert.ok(Math.abs(b.z) <= 17.5);
+    assert.ok(b.h > 1);
+    assert.ok(b.w < 0.1);
+    assert.ok(b.d > 1);
+  }
+});
+
+test('water setup is a single animated transparent sea, not stacked opaque discs', () => {
+  const spec = waterSetup();
+  assert.equal(spec.name, 'mediterraneanWater');
+  assert.equal(spec.transparent, true);
+  assert.ok(spec.opacity > 0.4 && spec.opacity < 1);
+  assert.equal(spec.animated, true);
+  assert.equal(spec.transmission, null);
+  assert.ok(spec.roughness < 0.4);
+  assert.ok(spec.hideDuplicates.includes('SM_Ocean_Surface'));
+  assert.ok(spec.hideDuplicates.includes('mediterraneanSea'));
+  const a = waterVertexOffset(10, 4, 0);
+  const b = waterVertexOffset(10, 4, 1.7);
+  const c = waterVertexOffset(40, -20, 1.7);
+  assert.notEqual(a, b);
+  assert.notEqual(b, c);
+  assert.ok(Math.abs(a) < 1 && Math.abs(b) < 1);
+});
+
+test('arena builder uses dressing helpers and does not stack a JS sea on the GLB ocean', () => {
+  const src = read('mediterranean-arena.js');
+  assert.match(src, /from '\.\/mediterranean-dressing\.js'/);
+  assert.match(src, /groundLayerPlan/);
+  assert.match(src, /addAnimatedWater/);
+  assert.match(src, /addUprightBanden/);
+  assert.match(src, /waterVertexOffset/);
+  assert.match(src, /shouldHideImportedBande/);
+  assert.doesNotMatch(src, /sea\.name = 'mediterraneanSea'/);
+  const html = read('index.html');
+  const startAt = html.indexOf('function startMatch()');
+  const startEnd = html.indexOf('\nfunction ', startAt + 1);
+  const startMatch = html.slice(startAt, startEnd);
+  assert.doesNotMatch(startMatch, /selectedMap/);
 });
 
 test('map switch disposes previous stadium and keeps courtGroup lines/net', () => {
