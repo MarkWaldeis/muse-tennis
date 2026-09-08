@@ -458,6 +458,7 @@ function addGrassFloor(courtGroup, D) {
   ground.position.y = 0;
   ground.receiveShadow = true;
   ground.name = 'groundOuter';
+  ground.userData.mapFloor = true;
   courtGroup.add(ground);
 
   const courtTex = grassTex.clone();
@@ -478,6 +479,7 @@ function addGrassFloor(courtGroup, D) {
   courtSurface.position.y = 0.005;
   courtSurface.receiveShadow = true;
   courtSurface.name = 'courtSurface';
+  courtSurface.userData.mapFloor = true;
   courtGroup.add(courtSurface);
 }
 
@@ -952,6 +954,7 @@ function addSkyAndLand(scene) {
     })
   );
   sky.name = 'wimbledonSky';
+  sky.userData.arenaDecor = true;
   scene.add(sky);
   const land = new THREE.Mesh(
     new THREE.CircleGeometry(200, 48),
@@ -961,6 +964,7 @@ function addSkyAndLand(scene) {
   land.position.y = -0.04;
   land.receiveShadow = true;
   land.name = 'outerLand';
+  land.userData.arenaDecor = true;
   scene.add(land);
 }
 
@@ -974,12 +978,17 @@ export function applyWimbledonAtmosphere(scene, renderer, controls) {
   }
 }
 
+function tagLight(obj, name) {
+  obj.name = name;
+  obj.userData.arenaDecor = true;
+  return obj;
+}
+
 export function createWimbledonLights(s) {
-  const hemi = new THREE.HemisphereLight(0xeef5ff, 0x4a6b50, 1.45);
-  hemi.name = 'wimbledonHemi';
+  const hemi = tagLight(new THREE.HemisphereLight(0xeef5ff, 0x4a6b50, 1.45), 'wimbledonHemi');
   s.add(hemi);
 
-  const amb = new THREE.AmbientLight(0xdde8d8, 0.32);
+  const amb = tagLight(new THREE.AmbientLight(0xdde8d8, 0.32), 'wimbledonAmb');
   s.add(amb);
 
   const sun = new THREE.DirectionalLight(0xfff6e8, 0.88);
@@ -1000,19 +1009,20 @@ export function createWimbledonLights(s) {
   sun.shadow.camera.near = 1;
   sun.shadow.camera.far = 110;
   sun.shadow.bias = -0.00035;
-  sun.name = 'wimbledonSun';
+  tagLight(sun, 'wimbledonSun');
   s.add(sun);
 
-  const fill = new THREE.DirectionalLight(0xd7e8ff, 0.42);
+  const fill = tagLight(new THREE.DirectionalLight(0xd7e8ff, 0.42), 'wimbledonFill');
   fill.position.set(-16, 22, -10);
   s.add(fill);
 
-  const bowl = new THREE.PointLight(0xfff4e4, 0.55, 90, 1.6);
+  const bowl = tagLight(new THREE.PointLight(0xfff4e4, 0.55, 90, 1.6), 'wimbledonBowl');
   bowl.position.set(0, 20, 0);
   s.add(bowl);
 
+  let lipI = 0;
   for (const [x, z] of [[16, 24], [-16, 24], [16, -24], [-16, -24]]) {
-    const lip = new THREE.PointLight(0xfff6ea, 0.4, 55, 1.8);
+    const lip = tagLight(new THREE.PointLight(0xfff6ea, 0.4, 55, 1.8), `wimbledonLip${lipI++}`);
     lip.position.set(x, 22, z);
     s.add(lip);
   }
@@ -1024,6 +1034,7 @@ export function createWimbledonStadium(scene, courtGroup, D, opts) {
 
   const root = new THREE.Group();
   root.name = 'wimbledonStadium';
+  root.userData.arenaDecor = true;
 
   const badgeTex = makeWimbledonBadge();
   const jackTex = makeUnionJack();
@@ -1043,6 +1054,7 @@ export function createWimbledonStadium(scene, courtGroup, D, opts) {
 
   return {
     root,
+    id: 'wimbledon',
     syncScore(state) {
       const next = makeScoreboardTexture(state);
       scoreTexA.image = next.image;

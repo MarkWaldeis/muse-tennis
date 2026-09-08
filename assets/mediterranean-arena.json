@@ -1,0 +1,80 @@
+{
+  "source": "C:\\Users\\Mark Waldeis\\Desktop\\tennis game\\codex tennis\\mediterranean_tennis_court.blend",
+  "glb": "C:\\Users\\Mark Waldeis\\Desktop\\tennis game\\muse-tennis-repo\\assets\\mediterranean-arena.glb",
+  "bytes": 15800172,
+  "hidden": [
+    "CAM_Beauty",
+    "CAM_Main",
+    "Camera",
+    "Court_Baseline_N",
+    "Court_Baseline_S",
+    "Court_CentreMark_N",
+    "Court_CentreMark_S",
+    "Court_CentreService",
+    "Court_Doubles_L",
+    "Court_Doubles_R",
+    "Court_Service_N",
+    "Court_Service_S",
+    "Court_Singles_L",
+    "Court_Singles_R",
+    "Light",
+    "LIGHT_Sky_Fill",
+    "LIGHT_Sun_GoldenHour",
+    "SM_Line_Baseline_North",
+    "SM_Line_Baseline_South",
+    "SM_Line_Center_Mark_N",
+    "SM_Line_Center_Mark_S",
+    "SM_Line_Center_Service",
+    "SM_Line_Doubles_East",
+    "SM_Line_Doubles_West",
+    "SM_Line_Service_North",
+    "SM_Line_Service_South",
+    "SM_Line_Singles_East",
+    "SM_Line_Singles_West",
+    "SM_Net_CenterStrap",
+    "SM_Net_Headband",
+    "SM_Net_Mesh",
+    "SM_NetPost_East",
+    "SM_NetPost_West"
+  ],
+  "kept_count": 625,
+  "clay_local": {
+    "min": [
+      -8.699999809265137,
+      -17.5,
+      -0.3499999940395355
+    ],
+    "max": [
+      8.699999809265137,
+      17.5,
+      0.0
+    ],
+    "size": [
+      17.399999618530273,
+      35.0,
+      0.3499999940395355
+    ]
+  },
+  "play_local": {
+    "min": [
+      -5.485000133514404,
+      -11.885000228881836,
+      -0.004000000189989805
+    ],
+    "max": [
+      5.485000133514404,
+      11.885000228881836,
+      0.004000000189989805
+    ],
+    "size": [
+      10.970000267028809,
+      23.770000457763672,
+      0.00800000037997961
+    ]
+  },
+  "align": {
+    "blender_court": "X=width Y=length Z=up after unrotate",
+    "gltf": "Y-up, Three.js Z = -Blender Y (north at -Z, court is symmetric)",
+    "game_court": "X=width Y=up Z=length, net at z=0"
+  }
+}

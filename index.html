@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="theme-color" content="#003820" />
-<title>Muse Tennis 3D – Wimbledon Centre Court</title>
+<title>Muse Tennis 3D</title>
 <style>
   :root {
     --hud-bg: rgba(0,0,0,0.55);
@@ -231,6 +231,26 @@
   .char-card[aria-pressed="true"] {
     border-color: #ffe566; background: rgba(255, 229, 102, 0.18);
   }
+  .map-picks {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  }
+  .map-card {
+    appearance: none; border: 2px solid rgba(255,255,255,0.28);
+    background: rgba(255,255,255,0.08); color: #fff;
+    border-radius: 12px; padding: 10px 8px; cursor: pointer;
+    font: inherit; -webkit-tap-highlight-color: transparent;
+  }
+  .map-card .char-emoji { display: block; font-size: 22px; line-height: 1.15; }
+  .map-card .char-name { display: block; margin-top: 2px; font-weight: 700; letter-spacing: 0.04em; font-size: 13px; }
+  .map-card[aria-pressed="true"] {
+    border-color: #ffe566; background: rgba(255, 229, 102, 0.18);
+  }
+  html.map-mediterranean #mainMenu {
+    background: linear-gradient(180deg, rgba(48, 22, 8, 0.42) 0%, rgba(48, 22, 8, 0.04) 26%, rgba(12, 40, 56, 0.08) 58%, rgba(12, 28, 40, 0.55) 100%);
+  }
+  html.map-mediterranean .menu-dock {
+    background: rgba(48, 24, 12, 0.58);
+  }
   .menu-diff {
     display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px;
   }
@@ -259,6 +279,7 @@
   #startBtn:active { transform: scale(0.98); }
   html.touch-ui .menu-dock { padding: 12px 12px 16px; }
   html.touch-ui .char-card { padding: 12px 8px; }
+  html.touch-ui .map-card { padding: 12px 8px; }
   html.touch-ui .diff-card { padding: 11px 4px; }
 </style>
 <script>
@@ -282,11 +303,11 @@
 </head>
 <body>
 <div id="app"></div>
-<div id="loading">Lade Charaktere…</div>
+<div id="loading">Lade Charaktere & Arena…</div>
 <div id="mainMenu">
   <header class="menu-top">
     <h1>MUSE TENNIS</h1>
-    <p>Centre Court</p>
+    <p id="menuTagline">Centre Court</p>
   </header>
   <div class="menu-dock">
     <div class="char-picks" role="group" aria-label="Charakter auswählen">
@@ -298,6 +319,19 @@
         <span class="char-emoji" aria-hidden="true">🦦</span>
         <span class="char-name">Otter</span>
       </button>
+    </div>
+    <div class="menu-diff">
+      <p class="menu-label">Platz</p>
+      <div class="map-picks" role="group" aria-label="Platz auswählen">
+        <button type="button" class="map-card" data-map="wimbledon" aria-pressed="true">
+          <span class="char-emoji" aria-hidden="true">🏟️</span>
+          <span class="char-name">Centre Court</span>
+        </button>
+        <button type="button" class="map-card" data-map="mediterranean" aria-pressed="false">
+          <span class="char-emoji" aria-hidden="true">🌅</span>
+          <span class="char-name">Clay Arena</span>
+        </button>
+      </div>
     </div>
     <div class="menu-diff">
       <p class="menu-label">KI-Stärke</p>
@@ -359,6 +393,17 @@ import {
   createWimbledonLights,
   applyWimbledonAtmosphere
 } from './wimbledon-stadium.js';
+import {
+  DEFAULT_MAP,
+  getMap,
+  parseMapQuery
+} from './maps.js';
+import {
+  applyMediterraneanAtmosphere,
+  createMediterraneanArena,
+  createMediterraneanLights,
+  preloadMediterraneanArena
+} from './mediterranean-arena.js';
 
 // ============================================================
 // COURT_DIMENSIONS - Single source of truth for later game logic
@@ -439,8 +484,10 @@ controls.maxDistance = 150;
 controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 controls.update();
 
-createWimbledonLights(scene);
-applyWimbledonAtmosphere(scene, renderer, controls);
+let selectedMap = parseMapQuery(location.search);
+document.documentElement.dataset.map = selectedMap;
+document.documentElement.classList.toggle('map-wimbledon', selectedMap === 'wimbledon');
+document.documentElement.classList.toggle('map-mediterranean', selectedMap === 'mediterranean');
 
 // ---------- Helpers ----------
 function makeNetTexture() {
@@ -485,9 +532,6 @@ export function createTennisCourt(s) {
   const D = COURT_DIMENSIONS;
   const courtGroup = new THREE.Group();
   courtGroup.name = 'courtGroup';
-
-  const stadium = createWimbledonStadium(s, courtGroup, D, { lowDetail: PROBE });
-  s.userData.wimbledonStadium = stadium;
 
   // White lines, 0.01m above ground
   const linesGroup = new THREE.Group();
@@ -617,6 +661,66 @@ export function createTennisCourt(s) {
 
   s.add(courtGroup);
   return courtGroup;
+}
+
+function disposeArenaDecor() {
+  const tagged = [];
+  scene.traverse((o) => {
+    if (o.userData && (o.userData.arenaDecor || o.userData.mapFloor)) tagged.push(o);
+  });
+  const roots = tagged.filter((o) => !tagged.includes(o.parent));
+  for (const o of roots) {
+    if (o.parent) o.parent.remove(o);
+  }
+  scene.userData.wimbledonStadium = null;
+}
+
+async function applySelectedMap() {
+  const map = getMap(selectedMap);
+  selectedMap = map.id;
+  document.documentElement.dataset.map = map.id;
+  document.documentElement.classList.toggle('map-wimbledon', map.id === 'wimbledon');
+  document.documentElement.classList.toggle('map-mediterranean', map.id === 'mediterranean');
+  const tag = document.getElementById('menuTagline');
+  if (tag) tag.textContent = map.tag;
+  disposeArenaDecor();
+  const D = COURT_DIMENSIONS;
+  if (map.id === 'mediterranean') {
+    const gltf = await preloadMediterraneanArena(loader);
+    createMediterraneanLights(scene);
+    applyMediterraneanAtmosphere(scene, renderer, controls);
+    scene.userData.wimbledonStadium = createMediterraneanArena(scene, courtGroup, D, {
+      gltf,
+      lowDetail: PROBE
+    });
+  } else {
+    createWimbledonLights(scene);
+    applyWimbledonAtmosphere(scene, renderer, controls);
+    scene.userData.wimbledonStadium = createWimbledonStadium(scene, courtGroup, D, {
+      lowDetail: PROBE
+    });
+  }
+  if (PROBE && window.__museTennis) window.__museTennis.activeMap = map.id;
+  return map.id;
+}
+
+function syncMapButtons() {
+  document.querySelectorAll('.map-card').forEach((btn) => {
+    btn.setAttribute('aria-pressed', btn.dataset.map === selectedMap ? 'true' : 'false');
+  });
+}
+
+async function selectMap(id) {
+  const map = getMap(id);
+  if (map.id === selectedMap && scene.userData.wimbledonStadium) {
+    syncMapButtons();
+    return map.id;
+  }
+  selectedMap = map.id;
+  syncMapButtons();
+  await applySelectedMap();
+  applyMenuCamera();
+  return map.id;
 }
 
 // ============================================================
@@ -3116,7 +3220,7 @@ export function createServeController(pl, bl, s, fx) {
   };
 }
 
-createTennisCourt(scene);
+const courtGroup = createTennisCourt(scene);
 const fx = createGameFeel(scene);
 const loader = new GLTFLoader();
 try {
@@ -3134,6 +3238,8 @@ try {
   if (el) el.textContent = 'Otter-Rig konnte nicht geladen werden: ' + (err && err.message ? err.message : err);
   throw err;
 }
+preloadMediterraneanArena(loader);
+await applySelectedMap();
 const loadingEl = document.getElementById('loading');
 if (loadingEl) loadingEl.remove();
 
@@ -3148,12 +3254,21 @@ let previewPlayer = null;
 let previewT = 0;
 let previewIntro = 1;
 
-const MENU_CAM_POS = new THREE.Vector3(4.15, 2.55, 16.6);
-const MENU_CAM_LOOK = new THREE.Vector3(0.1, 1.15, 10.2);
+const MENU_CAM = {
+  wimbledon: {
+    pos: new THREE.Vector3(4.15, 2.55, 16.6),
+    look: new THREE.Vector3(0.1, 1.15, 10.2)
+  },
+  mediterranean: {
+    pos: new THREE.Vector3(7.4, 3.6, 19.2),
+    look: new THREE.Vector3(0.15, 1.35, 8.8)
+  }
+};
 
 function applyMenuCamera() {
-  camera.position.copy(MENU_CAM_POS);
-  controls.target.copy(MENU_CAM_LOOK);
+  const cam = MENU_CAM[selectedMap] || MENU_CAM.wimbledon;
+  camera.position.copy(cam.pos);
+  controls.target.copy(cam.look);
   controls.enableRotate = false;
   controls.enablePan = false;
   controls.enableZoom = false;
@@ -3214,6 +3329,9 @@ function selectDifficulty(id) {
 document.querySelectorAll('.char-card').forEach((btn) => {
   btn.addEventListener('click', () => selectCharacter(btn.dataset.character));
 });
+document.querySelectorAll('.map-card').forEach((btn) => {
+  btn.addEventListener('click', () => selectMap(btn.dataset.map));
+});
 document.querySelectorAll('.diff-card').forEach((btn) => {
   btn.addEventListener('click', () => selectDifficulty(btn.dataset.difficulty));
 });
@@ -3223,10 +3341,13 @@ if (startBtn) startBtn.addEventListener('click', () => startMatch());
 document.documentElement.classList.add('menu-open');
 selectCharacter(selectedCharacter);
 selectDifficulty(selectedDifficulty);
+syncMapButtons();
 if (PROBE) window.__museTennis = {
-  camera, scene, fx, renderer, selectCharacter, selectDifficulty, startMatch,
+  camera, scene, fx, renderer, selectCharacter, selectDifficulty, selectMap, startMatch,
   getSelectedCharacter() { return selectedCharacter; },
   getSelectedDifficulty() { return selectedDifficulty; },
+  getSelectedMap() { return selectedMap; },
+  applySelectedMap, DEFAULT_MAP, getMap,
   shotQuality, applyShotQuality, PLAYER_REACH, BALL, COURT_DIMENSIONS
 };
 

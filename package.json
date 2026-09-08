@@ -1,0 +1,9 @@
+{
+  "name": "muse-tennis",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/maps.test.mjs",
+    "start": "python -m http.server 8000"
+  }
+}

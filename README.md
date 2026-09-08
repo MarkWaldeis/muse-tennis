@@ -25,9 +25,9 @@ Ein interaktives 3D-Tennisspiel direkt im Browser, entwickelt mit **Three.js** a
 
 ## ✨ Features
 
-- 🎬 **3D-Hauptmenü:** Centre Court als Bühne, gewählter Charakter in der Vorschau, Charakter und KI-Stärke als Glas-HUD.
+- 🎬 **3D-Hauptmenü:** Court als Bühne, Charakter-Vorschau, Platzwahl (Centre Court oder mediterrane Clay Arena) und KI-Stärke als Glas-HUD.
 - 🐣 **Geriggter Mascot-Spieler:** Tripo-Vogel mit Mixamo-Skeleton (Finger, Zehen, Schwanz, Kamm), volumetrischem Skinning und Tennisschläger in der Schlaghand.
-- 🏟️ **Wimbledon Centre Court:** Rasenplatz nach ITF-Maßen (Einzelfeld, Doppelfeld, Aufschlagfelder, Baseline, Netz mit realistischem Durchhang) in einer Stadion-Schüssel mit dunkelgrünen Sitzreihen, Royal Box, Union Jack, digitalem Scoreboard, Schiedsrichterstuhl und teilweise geöffnetem Retractable Roof.
+- 🏟️ **Zwei Plätze:** **Wimbledon Centre Court** (Rasen, Stadion-Schüssel, Royal Box, Retractable Roof) und **Mediterranean Clay Arena** (Sandplatz, Villa, Meer, goldene Stunde). Beide teilen dieselben ITF-Maße, Animationen, Physik und das Zählwerk.
 - 🎯 **Sichtbares Zielen:** Goldener Lande-Ring auf der gegnerischen Hälfte. WASD bzw. Stick schieben das Ziel; es bleibt beim Loslassen stehen. Beim Aufschlag klebt der Ring im diagonalen Aufschlagfeld, der Timing-Balken steuert Tempo und Genauigkeit.
 - 🎯 **Aufschlag-Mechanik:** Interaktives Aufschlag-Minigame mit Ballwurf und Sweet-Spot Timing-Balken – dieselben Ready/Toss/Strike/Follow-Animationen wie zuvor, jetzt auf dem Rasen hinter der Grundlinie.
 - ⚡ **Ballphysik & Rallye:** Schwerkraft, Luftwiderstand, Netzkollision, Doppeldotz- und Aus-Erkennung. Früh am Ball = durchgezogener Drive, spät und gestreckt = hoher, weicher Float.
@@ -43,12 +43,16 @@ Ein interaktives 3D-Tennisspiel direkt im Browser, entwickelt mit **Three.js** a
 
 ```text
 muse-tennis/
-├── index.html                      # Spiel (Three.js, Logik, UI, Physik)
-├── wimbledon-stadium.js            # Centre-Court-Stadion, Rasen, Dach, Props
-├── assets/mascot-bird-rigged.glb   # Geriggter Spieler (Mixamo-Skeleton + Finger)
-├── assets/mascot-bird-rig.json     # Knochenkarte / Bind-Metadaten
-├── tools/rig_character.py          # CPU-Auto-Rigger (voxel-geodesic heat)
-├── mascot bird 3d model.glb        # Ungeriggtes Tripo-Quellmesh
+├── index.html                         # Spiel (Three.js, Logik, UI, Physik)
+├── maps.js                            # Platz-Katalog (Centre Court / Clay Arena)
+├── wimbledon-stadium.js               # Centre-Court-Stadion, Rasen, Dach, Props
+├── mediterranean-arena.js             # Clay-Arena, Licht, Meer, GLB-Loader
+├── assets/mediterranean-arena.glb     # Blender-Map (Villa, Vegetation, Yachten)
+├── assets/mascot-bird-rigged.glb      # Geriggter Spieler (Mixamo-Skeleton + Finger)
+├── assets/mascot-bird-rig.json        # Knochenkarte / Bind-Metadaten
+├── tools/rig_character.py             # CPU-Auto-Rigger (voxel-geodesic heat)
+├── tests/maps.test.mjs                # Map-Katalog, GLB, Menü-Verdrahtung
+├── mascot bird 3d model.glb           # Ungeriggtes Tripo-Quellmesh
 ├── .gitignore
 └── README.md
 ```
@@ -66,7 +70,8 @@ Einfach die Datei `index.html` über einen lokalen Webserver öffnen (z. B. VS C
 - [ ] Soundeffekte (Schlaggeräusche, Ballaufprall, Netzkontakt, Schiedsrichteransagen)
 - [ ] Sound- und Jubelanimationen für Punkte und Asse
 - [x] Wimbledon Centre Court (Rasen, Stadion, Retractable Roof)
-- [ ] Weitere Beläge (Sandplatz / Roland Garros, US Open Hartplatz)
+- [x] Mediterranean Clay Arena (Sandplatz, Villa, Meer)
+- [ ] Weitere Beläge (Roland Garros, US Open Hartplatz)
 - [x] Touch-Steuerung für mobile Endgeräte (iOS / Android)
 - [x] Einstellbare KI-Schwierigkeitsgrade (Leicht, Mittel, Profi)
 - [ ] Lokaler 2-Spieler-Modus (Split-Screen oder Dual-Controls)
