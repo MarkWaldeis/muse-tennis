@@ -1,0 +1,17 @@
+{
+  "name": "Muse Tennis 3D",
+  "install": "python3 -c \"import numpy\" 2>/dev/null || python3 -m pip install --user numpy",
+  "terminals": [
+    {
+      "name": "web",
+      "command": "python3 -m http.server 8000 --bind 0.0.0.0",
+      "description": "Static web server for the Three.js tennis game. Open http://localhost:8000/ to play."
+    }
+  ],
+  "ports": [
+    {
+      "name": "web server",
+      "port": 8000
+    }
+  ]
+}
