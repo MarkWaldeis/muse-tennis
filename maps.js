@@ -18,6 +18,16 @@ export const MAPS = Object.freeze([
     surface: 'clay',
     blurb: 'Sandplatz, Villa, goldene Stunde',
     glb: './assets/mediterranean-arena.glb'
+  }),
+  Object.freeze({
+    id: 'harbor', name: 'Hafen', tag: 'Flutlicht am Hafen', surface: 'hard',
+    blurb: 'Hartplatz auf einer Pier mit Kränen, Tribünen und Hafenlichtern',
+    glb: './assets/harbor-arena.glb'
+  }),
+  Object.freeze({
+    id: 'alpine', name: 'Alpen', tag: 'Sandplatz in den Alpen', surface: 'clay',
+    blurb: 'Sandplatz zwischen Berghütten, Nadelwald und schneebedeckten Gipfeln',
+    glb: './assets/alpine-arena.glb'
   })
 ]);
 

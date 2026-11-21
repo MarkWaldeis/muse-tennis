@@ -35,18 +35,30 @@ function read(rel) {
   return fs.readFileSync(path.join(ROOT, rel), 'utf8');
 }
 
-test('catalog exposes both playable maps and keeps Wimbledon as default', () => {
+test('catalog exposes all four playable maps and keeps Wimbledon as default', () => {
   const ids = listMaps().map((m) => m.id);
-  assert.deepEqual(ids, ['wimbledon', 'mediterranean']);
+  assert.deepEqual(ids, ['wimbledon', 'mediterranean', 'harbor', 'alpine']);
   assert.equal(DEFAULT_MAP, 'wimbledon');
   assert.equal(getMap('nope').id, 'wimbledon');
   assert.equal(isValidMap('mediterranean'), true);
   assert.equal(isValidMap('us-open'), false);
   assert.equal(nextMapId('wimbledon'), 'mediterranean');
-  assert.equal(nextMapId('mediterranean'), 'wimbledon');
+  assert.equal(nextMapId('mediterranean'), 'harbor');
+  assert.equal(nextMapId('alpine'), 'wimbledon');
   assert.equal(getMap('mediterranean').surface, 'clay');
   assert.equal(getMap('wimbledon').surface, 'grass');
   assert.equal(getMap('mediterranean').glb, './assets/mediterranean-arena.glb');
+});
+
+test('Blender court models keep a compact material batch and mobile download size', () => {
+  for (const id of ['harbor', 'alpine']) {
+    const buf = fs.readFileSync(path.join(ROOT, getMap(id).glb));
+    assert.equal(buf.toString('ascii', 0, 4), 'glTF');
+    assert.ok(buf.length < 2_600_000, id + ' exceeds the asset budget');
+    const json = JSON.parse(buf.subarray(20, 20 + buf.readUInt32LE(12)).toString('utf8'));
+    assert.equal(json.asset.version, '2.0');
+    assert.ok(json.meshes.length >= 10 && json.meshes.length <= 20);
+  }
 });
 
 test('parseMapQuery only accepts catalog ids', () => {
@@ -222,12 +234,12 @@ test('arena builder uses dressing helpers and does not stack a JS sea on the GLB
   assert.doesNotMatch(startMatch, /selectedMap/);
 });
 
-test('map switch disposes previous stadium and keeps courtGroup lines/net', () => {
+test('map switch detaches the previous stadium and keeps courtGroup lines/net', () => {
   const html = read('index.html');
-  assert.match(html, /function disposeArenaDecor\(/);
+  assert.match(html, /function detachArenaDecor\(/);
   assert.match(html, /userData\.arenaDecor \|\| o\.userData\.mapFloor/);
   assert.match(html, /const courtGroup = createTennisCourt\(scene\)/);
-  const courtFn = html.slice(html.indexOf('export function createTennisCourt'), html.indexOf('function disposeArenaDecor'));
+  const courtFn = html.slice(html.indexOf('export function createTennisCourt'), html.indexOf('function detachArenaDecor'));
   assert.match(courtFn, /linesGroup/);
   assert.match(courtFn, /netGroup/);
   assert.doesNotMatch(courtFn, /createWimbledonStadium/);

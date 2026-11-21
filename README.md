@@ -8,6 +8,12 @@ Ein interaktives 3D-Tennisspiel direkt im Browser, entwickelt mit **Three.js** a
 
 *(Keine Installation oder Build-Schritt erforderlich – läuft sofort in jedem modernen Webbrowser!)*
 
+## Online zu zweit
+
+Wähle einen Platz und einen Charakter. Öffne **Online-Duell → Raum erstellen** und teile den achtstelligen Code oder den Einladungslink. Dein Gegenüber wählt den eigenen Charakter und tritt über **Online-Duell** bei. Der Platz der Person, die den Raum erstellt hat, gilt für beide.
+
+Ein Duell geht über einen Satz. Wirf zum Aufschlag per Leertaste oder Schlagknopf den Ball hoch. Im Ballwechsel steuert der Stick die Figur und beim Treffmoment die Schlagrichtung. Die Partie pausiert, wenn die Verbindung zum zweiten Gerät abbricht. Der Raumcode dient der Einladung. Der Modus nutzt die öffentliche Firebase-Datenbank des Spielekabinetts und benötigt kein Konto.
+
 ---
 
 ## 🎮 Steuerung
@@ -25,9 +31,9 @@ Ein interaktives 3D-Tennisspiel direkt im Browser, entwickelt mit **Three.js** a
 
 ## ✨ Features
 
-- 🎬 **3D-Hauptmenü:** Court als Bühne, Charakter-Vorschau, Platzwahl (Centre Court oder mediterrane Clay Arena) und KI-Stärke als Glas-HUD.
+- 🎬 **3D-Hauptmenü:** Court als Bühne, Charakter-Vorschau, Platzwahl, KI-Stärke und Online-Duell.
 - 🐣 **Geriggter Mascot-Spieler:** Tripo-Vogel mit Mixamo-Skeleton (Finger, Zehen, Schwanz, Kamm), volumetrischem Skinning und Tennisschläger in der Schlaghand.
-- 🏟️ **Zwei Plätze:** **Wimbledon Centre Court** (Rasen, Stadion-Schüssel, Royal Box, Retractable Roof) und **Mediterranean Clay Arena** (Sandplatz, Villa, Meer, goldene Stunde). Beide teilen dieselben ITF-Maße, Animationen, Physik und das Zählwerk.
+- 🏟️ **Vier Plätze:** Centre Court, Mediterranean Clay Arena, Hafenarena mit Kränen und Flutlicht sowie Alpenplatz mit Berghütten und Nadelwald. Die Plätze teilen dieselben Spielfeldmaße.
 - 🎯 **Sichtbares Zielen:** Goldener Lande-Ring auf der gegnerischen Hälfte. WASD bzw. Stick schieben das Ziel; es bleibt beim Loslassen stehen. Beim Aufschlag klebt der Ring im diagonalen Aufschlagfeld, der Timing-Balken steuert Tempo und Genauigkeit.
 - 🎯 **Aufschlag-Mechanik:** Interaktives Aufschlag-Minigame mit Ballwurf und Sweet-Spot Timing-Balken – dieselben Ready/Toss/Strike/Follow-Animationen wie zuvor, jetzt auf dem Rasen hinter der Grundlinie.
 - ⚡ **Ballphysik & Rallye:** Schwerkraft, Luftwiderstand, Netzkollision, Doppeldotz- und Aus-Erkennung. Früh am Ball = durchgezogener Drive, spät und gestreckt = hoher, weicher Float.
@@ -62,6 +68,8 @@ muse-tennis/
 ## 🛠️ Lokale Entwicklung
 
 Einfach die Datei `index.html` über einen lokalen Webserver öffnen (z. B. VS Code Live Server oder `python -m http.server 8000`). Ein Datei-Doppelklick (`file://`) reicht nicht, weil das Stadion-Modul per ES-Import geladen wird.
+
+Mit `npm test` lassen sich Duellregeln, Platzkatalog und Modelle überprüfen. Die beiden neuen GLB-Modelle lassen sich mit `blender --background --python tools/export_new_courts.py` aus dem Projektordner neu erzeugen.
 
 ---
 

@@ -282,6 +282,7 @@
   html.touch-ui .map-card { padding: 12px 8px; }
   html.touch-ui .diff-card { padding: 11px 4px; }
 </style>
+<link rel="stylesheet" href="./online.css?v=2" />
 <script>
 (function () {
   var touch = false;
@@ -331,6 +332,12 @@
           <span class="char-emoji" aria-hidden="true">🌅</span>
           <span class="char-name">Clay Arena</span>
         </button>
+        <button type="button" class="map-card" data-map="harbor" aria-pressed="false">
+          <span class="char-name">Hafen</span><span class="court-type">Hartplatz</span>
+        </button>
+        <button type="button" class="map-card" data-map="alpine" aria-pressed="false">
+          <span class="char-name">Alpen</span><span class="court-type">Sand</span>
+        </button>
       </div>
     </div>
     <div class="menu-diff">
@@ -341,15 +348,38 @@
         <button type="button" class="diff-card" data-difficulty="pro" aria-pressed="false">Profi</button>
       </div>
     </div>
-    <button type="button" id="startBtn">Starten</button>
+    <div class="mode-actions">
+      <button type="button" id="startBtn">Gegen KI</button>
+      <button type="button" id="onlineBtn">Online-Duell</button>
+    </div>
   </div>
 </div>
+<dialog id="onlineDialog" aria-labelledby="onlineTitle">
+  <div class="online-heading">
+    <h2 id="onlineTitle">Online-Duell</h2>
+    <button type="button" id="closeOnline">Schließen</button>
+  </div>
+  <form id="onlineForm">
+    <button type="button" id="hostRoom">Raum erstellen</button>
+    <label for="onlineCode">Raumcode</label>
+    <div class="join-row">
+      <input id="onlineCode" maxlength="9" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go" />
+      <button type="submit" id="joinRoom">Beitreten</button>
+    </div>
+  </form>
+  <div id="roomInvite" hidden>
+    <output id="inviteCode" aria-label="Dein Raumcode"></output>
+    <button type="button" id="copyInvite">Einladung kopieren</button>
+  </div>
+  <p id="onlineMessage" role="status"></p>
+</dialog>
 <div id="info">
   <span class="desk">🎾 Tennis – Aufschlag & Rally<br>WASD: laufen • Zielring bei Stand/Schwung/Aufschlag • Space: Schlag • R: neu • C: Cam</span>
   <span class="mob">🎾 Stick: laufen • Stand/Schwung zielt • Knopf: Schlag • Ring = Landung<br>↻ neu • 📷 Kamera</span>
 </div>
 <button id="camBtn" type="button">📷 Follow-Cam: AN</button>
 <button id="resetBtn" type="button">↻ Neu</button>
+<button id="onlineExit" type="button" hidden>Verlassen</button>
 <div id="status">Ballwechsel: 0</div>
 <div id="score" aria-live="polite" aria-label="Spielstand">
   <div class="sb-card">
@@ -388,6 +418,9 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { createDuel, neutralInput, normalizeInput, STEP, tennisPoints } from './duel.js';
+import { openRoom, parseRoomCode } from './online-room.js';
+import { applyBlenderAtmosphere, createBlenderCourt, loadBlenderCourt, updateBlenderCourt } from './blender-courts.js?v=2';
 import {
   createWimbledonStadium,
   createWimbledonLights,
@@ -439,6 +472,7 @@ export const COURT_DIMENSIONS = {
 
 // ---------- Renderer / Scene / Camera ----------
 const PROBE = new URLSearchParams(location.search).has('probe');
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 function isTouchPlay() {
   try {
     return window.matchMedia('(pointer: coarse)').matches
@@ -663,42 +697,60 @@ export function createTennisCourt(s) {
   return courtGroup;
 }
 
-function disposeArenaDecor() {
+const arenaCache = new Map();
+let activeArena = null;
+let mapRequest = 0;
+
+function detachArenaDecor() {
   const tagged = [];
   scene.traverse((o) => {
     if (o.userData && (o.userData.arenaDecor || o.userData.mapFloor)) tagged.push(o);
   });
   const roots = tagged.filter((o) => !tagged.includes(o.parent));
-  for (const o of roots) {
-    if (o.parent) o.parent.remove(o);
-  }
+  const mounts = roots.map(object => ({ parent: object.parent, object }));
+  for (const { parent, object } of mounts) parent.remove(object);
+  if (activeArena) arenaCache.set(activeArena, { mounts, stadium: scene.userData.wimbledonStadium });
   scene.userData.wimbledonStadium = null;
 }
 
 async function applySelectedMap() {
   const map = getMap(selectedMap);
+  const request = ++mapRequest;
+  const isBlenderCourt = map.id === 'harbor' || map.id === 'alpine';
+  let gltf = null;
+  if (!arenaCache.has(map.id) && activeArena !== map.id) {
+    if (map.id === 'mediterranean') gltf = await preloadMediterraneanArena(loader);
+    if (isBlenderCourt) gltf = await loadBlenderCourt(map, loader).catch(error => {
+      console.warn('Arena konnte nicht geladen werden', error);
+      return null;
+    });
+  }
+  if (request !== mapRequest) return activeArena;
+  if (activeArena === map.id) return map.id;
   selectedMap = map.id;
   document.documentElement.dataset.map = map.id;
   document.documentElement.classList.toggle('map-wimbledon', map.id === 'wimbledon');
   document.documentElement.classList.toggle('map-mediterranean', map.id === 'mediterranean');
   const tag = document.getElementById('menuTagline');
   if (tag) tag.textContent = map.tag;
-  disposeArenaDecor();
+  detachArenaDecor();
+  activeArena = map.id;
   const D = COURT_DIMENSIONS;
-  if (map.id === 'mediterranean') {
-    const gltf = await preloadMediterraneanArena(loader);
+  if (isBlenderCourt) applyBlenderAtmosphere(scene, renderer, controls, map.id);
+  else if (map.id === 'mediterranean') applyMediterraneanAtmosphere(scene, renderer, controls);
+  else applyWimbledonAtmosphere(scene, renderer, controls);
+  const cached = arenaCache.get(map.id);
+  if (cached) {
+    for (const { parent, object } of cached.mounts) parent.add(object);
+    scene.userData.wimbledonStadium = cached.stadium;
+  } else if (isBlenderCourt) {
+    scene.userData.wimbledonStadium = createBlenderCourt(scene, D, map.id, gltf, isTouchPlay() || PROBE);
+  } else if (map.id === 'mediterranean') {
     createMediterraneanLights(scene);
-    applyMediterraneanAtmosphere(scene, renderer, controls);
-    scene.userData.wimbledonStadium = createMediterraneanArena(scene, courtGroup, D, {
-      gltf,
-      lowDetail: PROBE
-    });
+    scene.userData.wimbledonStadium = createMediterraneanArena(scene, courtGroup, D, { gltf, lowDetail: PROBE });
   } else {
     createWimbledonLights(scene);
-    applyWimbledonAtmosphere(scene, renderer, controls);
-    scene.userData.wimbledonStadium = createWimbledonStadium(scene, courtGroup, D, {
-      lowDetail: PROBE
-    });
+    scene.userData.wimbledonStadium = createWimbledonStadium(scene, courtGroup, D, { lowDetail: PROBE });
   }
   if (PROBE && window.__museTennis) window.__museTennis.activeMap = map.id;
   return map.id;
@@ -712,10 +764,6 @@ function syncMapButtons() {
 
 async function selectMap(id) {
   const map = getMap(id);
-  if (map.id === selectedMap && scene.userData.wimbledonStadium) {
-    syncMapButtons();
-    return map.id;
-  }
   selectedMap = map.id;
   syncMapButtons();
   await applySelectedMap();
@@ -836,11 +884,17 @@ export const input = { x: 0, z: 0, swingPressed: false };
 const keys = {};
 const touchMove = { x: 0, z: 0 };
 window.addEventListener('keydown', (e) => {
+  if (document.documentElement.classList.contains('menu-open')) return;
   if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
   keys[e.key.toLowerCase()] = true;
   if (e.key === ' ' && !e.repeat) input.swingPressed = true;
 });
 window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+window.addEventListener('blur', () => {
+  for (const key in keys) keys[key] = false;
+  setJoy(0, 0);
+  input.swingPressed = false;
+});
 window.addEventListener('contextmenu', (e) => {
   if (e.target && (e.target.closest('#touchPad') || e.target.closest('#camBtn') || e.target.closest('#resetBtn') || e.target === renderer.domElement)) {
     e.preventDefault();
@@ -1879,21 +1933,22 @@ export function createBall(s) {
   group.add(mesh);
   s.add(group);
 
-  // Trail: 14 fading mini-spheres (cheap, no post-processing)
-  const TRAIL_N = 14;
-  const trail = [];
-  const history = [];
-  for (let i = 0; i < TRAIL_N; i++) {
-    const m = new THREE.Mesh(
-      new THREE.SphereGeometry(BALL.radius * 0.55, 8, 6),
-      new THREE.MeshBasicMaterial({ color: 0xeaff70, transparent: true, opacity: 0.35 * (1 - i / TRAIL_N) })
-    );
-    m.visible = false;
-    s.add(m);
-    trail.push(m);
-    history.push(new THREE.Vector3());
-  }
-  let historyInit = false;
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(.9, .9), new THREE.MeshBasicMaterial({
+    map: makeFlashTexture(), color: 0x00101c, transparent: true, opacity: .5, depthWrite: false
+  }));
+  shadow.rotation.x = -Math.PI / 2;
+  s.add(shadow);
+  const trailLength = 11;
+  const trail = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 7, 5), new THREE.MeshBasicMaterial({
+    color: 0xeaff70, transparent: true, opacity: .28, depthWrite: false
+  }), trailLength);
+  trail.frustumCulled = false;
+  trail.visible = false;
+  trail.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  s.add(trail);
+  const bead = new THREE.Object3D();
+  const history = Array.from({ length: trailLength }, () => new THREE.Vector3());
+  let sampleTime = 0;
 
   const velocity = new THREE.Vector3();
   let bouncesSinceHit = 0;
@@ -1907,8 +1962,13 @@ export function createBall(s) {
     bouncesSinceHit = 0;
     lastHitter = null;
     touchedNet = false;
-    historyInit = false;
-    trail.forEach(m => { m.visible = false; });
+    clearTrail();
+  }
+
+  function clearTrail() {
+    history.forEach(point => point.copy(group.position));
+    trail.visible = false;
+    sampleTime = 0;
   }
 
   // Ballistic shot: choose velocity so ball lands at `to` after flightTime
@@ -1956,25 +2016,48 @@ export function createBall(s) {
       bounceEvent = { x: group.position.x, z: group.position.z, side, out, n: bouncesSinceHit };
     }
 
-    // Cute spin + trail
-    const sp = velocity.length();
-    if (sp > 0.01) {
-      mesh.rotateOnWorldAxis(spinAxis, sp * dt * 1.2);
-      if (!historyInit) {
-        for (const h of history) h.copy(group.position);
-        historyInit = true;
-      }
-      for (let i = TRAIL_N - 1; i > 0; i--) history[i].copy(history[i - 1]);
-      history[0].copy(group.position);
-      const showTrail = sp > 4;
-      for (let i = 0; i < TRAIL_N; i++) {
-        trail[i].visible = showTrail;
-        if (showTrail) trail[i].position.copy(history[i]);
-      }
-    } else {
-      trail.forEach(m => { m.visible = false; });
-    }
     return bounceEvent;
+  }
+
+  function updateVisuals(dt) {
+    const pos = group.position;
+    const height = Math.max(0, pos.y - BALL.radius);
+    const sp = velocity.length();
+    shadow.position.set(pos.x, .023, pos.z);
+    shadow.scale.setScalar(1 + Math.min(1.3, height * .21));
+    shadow.material.opacity = .52 / (1 + height * .7);
+    if (sp > .01) mesh.rotateOnWorldAxis(spinAxis, sp * dt * 1.3);
+    const showTrail = sp > 5 && !reducedMotion.matches;
+    if (!showTrail) {
+      if (trail.visible) clearTrail();
+      return;
+    }
+    if (!trail.visible) history.forEach(point => point.copy(pos));
+    trail.visible = true;
+    sampleTime += dt;
+    if (sampleTime >= 1 / 60) {
+      sampleTime %= 1 / 60;
+      for (let i = trailLength - 1; i > 0; i--) history[i].copy(history[i - 1]);
+      history[0].copy(group.position);
+      for (let i = 0; i < trailLength; i++) {
+        const size = .083 * (1 - i / trailLength) ** 1.45;
+        bead.position.copy(history[i]);
+        bead.scale.set(size, size, size);
+        bead.updateMatrix();
+        trail.setMatrixAt(i, bead.matrix);
+      }
+      trail.instanceMatrix.needsUpdate = true;
+    }
+  }
+
+  function present(state, blend, dt) {
+    const pos = group.position;
+    pos.x += (state.x - pos.x) * blend;
+    pos.y += (state.y - pos.y) * blend;
+    pos.z += (state.z - pos.z) * blend;
+    velocity.set(state.vx, state.vy, state.vz);
+    if (blend === 1) clearTrail();
+    updateVisuals(dt);
   }
 
   const predictP = new THREE.Vector3();
@@ -1996,7 +2079,7 @@ export function createBall(s) {
   }
 
   return {
-    mesh: group, velocity, update, hit, reset, predictLanding,
+    mesh: group, velocity, update, updateVisuals, present, hit, reset, predictLanding,
     get bounces() { return bouncesSinceHit; },
     get hitter() { return lastHitter; },
     set hitter(v) { lastHitter = v; },
@@ -2490,6 +2573,33 @@ function createGameFeel(s) {
   const ringTex = makeRingTexture(false);
   const ghostTex = makeRingTexture(true);
   const flashTex = makeFlashTexture();
+  const particleCount = 14;
+  const particlePositions = new Float32Array(particleCount * 3);
+  const particleVectors = Array.from({ length: particleCount }, () => new THREE.Vector3());
+  const particleGeometry = new THREE.BufferGeometry();
+  const particleBuffer = new THREE.BufferAttribute(particlePositions, 3).setUsage(THREE.DynamicDrawUsage);
+  particleGeometry.setAttribute('position', particleBuffer);
+  const particles = new THREE.Points(particleGeometry, new THREE.PointsMaterial({
+    size: .16, map: flashTex, transparent: true, depthWrite: false
+  }));
+  particles.frustumCulled = false;
+  particles.visible = false;
+  s.add(particles);
+  let particleAge = 1;
+
+  function burst(x, y, z, hit) {
+    if (reducedMotion.matches) return;
+    particles.position.set(x, y, z);
+    particles.material.color.setHex(hit ? 0xffff9f : getMap(selectedMap).surface === 'clay' ? 0xe9ac77 : 0xceefa5);
+    particles.material.size = hit ? .21 : .16;
+    particleAge = 0;
+    particles.visible = true;
+    particleVectors.forEach((vector, i) => {
+      const angle = i * 2.39996;
+      const spread = (1.17 + (i % 5) * .48) * (hit ? 2 : 1);
+      vector.set(Math.cos(angle) * spread, (i % 7) * .3 + (hit ? 0 : .82), Math.sin(angle) * spread);
+    });
+  }
   const bouncePool = [];
   const BOUNCE_N = 4;
   const BOUNCE_DUR = 0.72;
@@ -2625,6 +2735,7 @@ function createGameFeel(s) {
   let calloutGen = 0;
 
   function spawnBounce(x, z, kind) {
+    burst(x, .045, z, false);
     const m = bouncePool[bounceI % BOUNCE_N];
     bounceI++;
     m.group.position.set(x, 0.03, z);
@@ -2692,6 +2803,7 @@ function createGameFeel(s) {
   }
 
   function sparkAt(pos, q) {
+    burst(pos.x, pos.y, pos.z, true);
     spark.position.copy(pos);
     sparkT = 0;
     sparkBoost = q == null ? 1 : 0.72 + THREE.MathUtils.clamp(q, 0, 1) * 0.55;
@@ -2712,6 +2824,14 @@ function createGameFeel(s) {
   }
 
   function update(dt) {
+    if (particles.visible) {
+      particleAge += dt;
+      particles.visible = particleAge < .38;
+      particles.material.opacity = Math.max(0, 1 - particleAge / .38);
+      particleVectors.forEach((v, i) => particleBuffer.setXYZ(i, v.x * particleAge,
+        Math.max(-particles.position.y + .026, v.y * particleAge - 5.6 * particleAge ** 2), v.z * particleAge));
+      particleBuffer.needsUpdate = true;
+    }
     for (const m of bouncePool) {
       if (!m.live) continue;
       m.t += dt;
@@ -2788,7 +2908,7 @@ function createGameFeel(s) {
   }
 
   let camKick = 0;
-  function kick() { camKick = 0.12; }
+  function kick() { if (!reducedMotion.matches) camKick = 0.12; }
   function applyKick(target, dt) {
     if (camKick <= 0) return;
     camKick = Math.max(0, camKick - dt);
@@ -3238,7 +3358,6 @@ try {
   if (el) el.textContent = 'Otter-Rig konnte nicht geladen werden: ' + (err && err.message ? err.message : err);
   throw err;
 }
-preloadMediterraneanArena(loader);
 await applySelectedMap();
 const loadingEl = document.getElementById('loading');
 if (loadingEl) loadingEl.remove();
@@ -3250,6 +3369,7 @@ let ball = null;
 let ai = null;
 let serve = null;
 let playerSync = null;
+let onlineMatch = null;
 let previewPlayer = null;
 let previewT = 0;
 let previewIntro = 1;
@@ -3262,7 +3382,9 @@ const MENU_CAM = {
   mediterranean: {
     pos: new THREE.Vector3(7.4, 3.6, 19.2),
     look: new THREE.Vector3(0.15, 1.35, 8.8)
-  }
+  },
+  harbor: { pos: new THREE.Vector3(6.8, 3.6, 19.1), look: new THREE.Vector3(-.7, 1.55, 7.1) },
+  alpine: { pos: new THREE.Vector3(6.6, 3.8, 19.3), look: new THREE.Vector3(.05, 1.75, 7.5) }
 };
 
 function applyMenuCamera() {
@@ -3547,8 +3669,9 @@ function setFollow(v) {
       : (touch ? '📷 Orbit' : '📷 Follow-Cam: AUS');
   }
   if (!followCam) {
-    camera.position.set(0.2, 16.5, 20);
-    controls.target.set(0, 4.5, -2);
+    const view = onlineMatch?.room.seat === 1 ? -1 : 1;
+    camera.position.set(0.2 * view, 16.5, 20 * view);
+    controls.target.set(0, 4.5, -2 * view);
     controls.update();
   }
   syncOrbit();
@@ -3574,6 +3697,7 @@ function resizeView() {
   const w = window.innerWidth;
   const h = Math.max(1, window.innerHeight);
   camera.aspect = w / h;
+  camera.fov = camera.aspect < .8 ? 60 : 52;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h);
 }
@@ -3584,9 +3708,289 @@ if (window.visualViewport) {
 }
 resizeView();
 
+const onlineUI = Object.fromEntries([
+  'onlineDialog', 'onlineBtn', 'onlineForm', 'onlineCode', 'hostRoom', 'joinRoom',
+  'closeOnline', 'onlineMessage', 'roomInvite', 'inviteCode', 'copyInvite', 'onlineExit'
+].map(id => [id, document.getElementById(id)]));
+let room = null, openingRoom = false, preparingDuel = false;
+let roomValues = {}, connected = false, roomTime = 0;
+
+function showOnline() {
+  onlineUI.onlineMessage.textContent = '';
+  onlineUI.onlineDialog.showModal();
+  onlineUI.onlineCode.value = parseRoomCode(new URLSearchParams(location.search).get('room')) || '';
+}
+
+function setRoomPending(pending) {
+  openingRoom = pending;
+  for (const button of ['hostRoom', 'joinRoom', 'closeOnline']) onlineUI[button].disabled = pending;
+}
+
+function activePeer() {
+  const peer = roomValues.presence?.[1 - room.seat];
+  return connected && Number.isFinite(peer) && roomTime - peer < 5500;
+}
+
+function reportOnlineError(error) {
+  console.warn('Muse Tennis online', error);
+  if (onlineMatch) setStatus('Netzwerkfehler. Verbindung wird geprüft …');
+  else onlineUI.onlineMessage.textContent = 'Die Verbindung ist fehlgeschlagen. Versuche es erneut.';
+}
+
+function receiveRoom(values, isConnected, time) {
+  roomValues = values;
+  connected = isConnected;
+  roomTime = time;
+  if (!room || onlineMatch || preparingDuel) return;
+  if (values.lobby === null) {
+    onlineUI.onlineMessage.textContent = 'Der Raum wurde geschlossen.';
+    return;
+  }
+  if (values.lobby?.guest && activePeer()) {
+    preparingDuel = true;
+    setRoomPending(true);
+    startOnline(values.lobby).catch(reportOnlineError).finally(() => {
+      preparingDuel = false;
+      setRoomPending(false);
+    });
+  }
+}
+
+async function enterRoom(code) {
+  if (openingRoom || room || matchStarted) return;
+  if (code != null && !parseRoomCode(code)) {
+    onlineUI.onlineMessage.textContent = 'Gib einen gültigen achtstelligen Raumcode ein.';
+    return;
+  }
+  setRoomPending(true);
+  onlineUI.onlineMessage.textContent = 'Verbindung wird aufgebaut …';
+  try {
+    room = await openRoom({
+      code, map: selectedMap, character: selectedCharacter,
+      onUpdate: receiveRoom, onError: reportOnlineError
+    });
+    onlineUI.onlineForm.hidden = true;
+    onlineUI.roomInvite.hidden = !!room.seat;
+    onlineUI.inviteCode.textContent = room.code;
+    onlineUI.onlineMessage.textContent = 'Warte auf dein Gegenüber …';
+    receiveRoom(roomValues, connected, roomTime);
+  } catch (error) {
+    onlineUI.onlineMessage.textContent = error.message.startsWith('Raum') ||
+      error.message.startsWith('Dieser Raum') ? error.message : 'Verbindung fehlgeschlagen. Versuche es erneut.';
+  } finally {
+    if (!preparingDuel) setRoomPending(false);
+  }
+}
+
+async function closeRoom() {
+  if (openingRoom) return;
+  const previous = room;
+  room = null;
+  onlineUI.onlineDialog.close();
+  onlineUI.onlineForm.hidden = false;
+  onlineUI.roomInvite.hidden = true;
+  if (previous) await previous.close().catch(reportOnlineError);
+}
+
+onlineUI.onlineBtn.onclick = showOnline;
+onlineUI.hostRoom.onclick = () => enterRoom(null);
+onlineUI.onlineForm.onsubmit = e => { e.preventDefault(); enterRoom(onlineUI.onlineCode.value); };
+onlineUI.closeOnline.onclick = closeRoom;
+onlineUI.onlineDialog.addEventListener('cancel', e => { e.preventDefault(); closeRoom(); });
+onlineUI.copyInvite.onclick = async () => {
+  if (!room) return;
+  const link = new URL(location.pathname, location.origin);
+  link.searchParams.set('room', room.code);
+  try {
+    await navigator.clipboard.writeText(link.href);
+    onlineUI.onlineMessage.textContent = 'Einladungslink kopiert.';
+  } catch {
+    onlineUI.onlineMessage.textContent = 'Teile den angezeigten Raumcode.';
+  }
+};
+onlineUI.onlineExit.onclick = () => {
+  if (!room) return;
+  onlineUI.onlineExit.disabled = true;
+  Promise.race([room.close(), new Promise(resolve => setTimeout(resolve, 400))])
+    .catch(() => {}).finally(() => location.replace(location.pathname + '?map=' + selectedMap));
+};
+if (parseRoomCode(new URLSearchParams(location.search).get('room'))) showOnline();
+
+async function startOnline(lobby) {
+  await selectMap(lobby.map);
+  if (matchStarted) return;
+  matchStarted = true;
+  const { seat } = room;
+  disposeActor(previewPlayer);
+  previewPlayer = null;
+  const actors = [lobby.host, lobby.guest].map(({ character }, i) => createPlayer(scene, playerOptsFor(character, {
+    name: i === seat ? 'player' : 'opponent',
+    faceDir: i ? 1 : -1, shirtColor: i === seat ? undefined : 0x62ccff,
+    spawn: new THREE.Vector3(0, 0, i ? -13 : 13),
+    bounds: { minX: -9, maxX: 9, minZ: i ? -17 : .5, maxZ: i ? -.5 : 17 }
+  })));
+  player = actors[seat];
+  opponent = actors[1 - seat];
+  ball = createBall(scene);
+  const duel = seat ? null : createDuel(COURT_DIMENSIONS, BALL);
+  onlineMatch = {
+    room, actors, duel, local: { ...neutralInput }, frameBudget: 0, networkBudget: 0,
+    eventId: 0, phase: '', animationTime: 0, initialized: false,
+    lastStrokes: [0, 0], status: '', score: '', serverAnimation: -1, serveTime: 1,
+    sentEvent: -1, sentFrame: -1, sentMoving: false, lastInput: ''
+  };
+  input.swingPressed = false;
+  document.documentElement.classList.replace('menu-open', 'online-match');
+  document.querySelector('.sb-name.sb-ai').textContent = 'Gegner';
+  onlineUI.onlineDialog.close();
+  onlineUI.onlineExit.hidden = false;
+  setFollow(true);
+}
+
+const onlineEventPosition = new THREE.Vector3();
+function drawDuel(state, dt) {
+  const m = onlineMatch;
+  const { seat } = m.room;
+  const snap = !m.initialized || state.phase === 'ready' && m.phase !== 'ready';
+  if (m.phase !== state.phase) {
+    m.phase = state.phase;
+    m.animationTime = 0;
+  }
+  m.animationTime += dt;
+  m.serveTime += dt;
+  const event = state.event;
+  if (event.id > m.eventId) {
+    m.eventId = event.id;
+    onlineEventPosition.set(event.x, event.y, event.z);
+    const yours = event.seat === seat;
+    if (event.kind === 'hit' || event.kind === 'serve') {
+      fx.sparkAt(onlineEventPosition, .9);
+      fx.sound('hit');
+      m.actors[1 - event.seat].splitStep();
+      if (event.kind === 'serve') {
+        m.serverAnimation = event.seat;
+        m.serveTime = 0;
+      }
+      if (yours) fx.kick();
+    } else if (event.kind === 'bounce' || event.kind === 'out') {
+      fx.spawnBounce(event.x, event.z, event.kind === 'out' ? 'out' : 'in');
+      fx.sound('bounce');
+      if (event.kind === 'out') fx.callout(yours ? 'Aus · dein Punkt' : 'Aus', 'out');
+    } else if (event.kind === 'point' || event.kind === 'game' || event.kind === 'match') {
+      const label = event.kind === 'match' ? 'Satz' : event.kind === 'game' ? 'Spiel' : 'Punkt';
+      fx.callout(yours ? label + ' für dich' : label + ' für Gegner', event.kind === 'point' ? 'point' : 'game');
+    } else if (['fault', 'double-fault', 'let'].includes(event.kind)) {
+      fx.callout({ fault: 'Aufschlagfehler', 'double-fault': 'Doppelfehler', let: 'Netz · Wiederholung' }[event.kind], 'let');
+    }
+  }
+  const alpha = snap ? 1 : 1 - Math.exp(-dt * 21);
+  m.actors.forEach((actor, i) => {
+    const remote = state.actors[i];
+    if (remote.stroke !== m.lastStrokes[i]) {
+      m.lastStrokes[i] = remote.stroke;
+      actor.playStroke(remote.hand > 0 ? 'forehand' : 'backhand', .045);
+    }
+    actor.update(dt, { x: remote.vx / PLAYER.maxSpeed, z: remote.vz / PLAYER.maxSpeed });
+    actor.group.position.x += (remote.x - actor.group.position.x) * alpha;
+    actor.group.position.z += (remote.z - actor.group.position.z) * alpha;
+    if (i === state.server && state.phase === 'ready') actor.applyTennisPose('serveReady', 0, { time: m.animationTime });
+    if (i === state.server && state.phase === 'toss') {
+      const progress = Math.min(1, m.animationTime / .49);
+      actor.applyTennisPose('serveToss', 0, { kUp: Math.min(1, progress * 2), kTrophy: progress });
+    }
+    if (i === m.serverAnimation && m.serveTime < .44 && state.phase === 'live') {
+      if (m.serveTime < .16) actor.applyTennisPose('serveStrike', .42 + m.serveTime * 3.6, {});
+      else actor.applyTennisPose('serveFollow', (m.serveTime - .16) / .28, {});
+    }
+  });
+  const next = state.ball;
+  ball.present(next, alpha, dt);
+  m.initialized = true;
+  const points = tennisPoints(state.points);
+  const score = [...points, ...state.games, state.winner].join('/');
+  if (score !== m.score) {
+    m.score = score;
+    [seat, 1 - seat].forEach((index, i) => {
+      const key = i ? 'A' : 'P';
+      document.getElementById('scorePoints' + key).textContent = points[index];
+      document.getElementById('scoreGames' + key).textContent = state.games[index];
+      document.getElementById('scoreSets' + key).textContent = Number(state.winner === index);
+    });
+  }
+  const yours = state.server === seat;
+  if (hitCaption) {
+    hitCaption.textContent = yours && state.phase === 'ready' ? 'WERFEN' :
+      yours && state.phase === 'toss' ? 'TREFFEN' : 'SCHLAG';
+  }
+  const waiting = state.faults ? 'Zweiter Aufschlag' : 'Aufschlag';
+  const status = state.phase === 'finished' ? state.winner === seat ? 'Satz gewonnen' : 'Satz verloren' :
+    state.phase === 'ready' ? yours ? waiting + ' · ' + hitHint() : 'Gegner schlägt auf' :
+    state.phase === 'toss' ? yours ? 'Ballwurf · ' + hitHint() : 'Gegner wirft auf' :
+    state.phase === 'point' ? 'Nächster Punkt …' : 'Ballwechsel: ' + state.rally;
+  if (m.status !== status) { m.status = status; setStatus(status); }
+}
+
+function updateOnline(dt) {
+  const m = onlineMatch;
+  pollInput();
+  m.local.x = input.x;
+  m.local.z = input.z;
+  if (!activePeer()) {
+    input.swingPressed = false;
+    m.lastInput = '';
+    m.sentEvent = -1;
+    m.sentFrame = -1;
+    m.status = '';
+    const message = roomValues.lobby === null || roomValues.presence?.[1 - m.room.seat] === 0
+      ? 'Das Gegenüber hat den Raum verlassen.'
+      : 'Verbindung unterbrochen · Partie pausiert';
+    if (statusEl.textContent !== message) setStatus(message);
+    return;
+  }
+  if (input.swingPressed) { m.local.hit++; input.swingPressed = false; }
+  m.networkBudget += dt;
+  const send = m.networkBudget >= 1 / 24;
+  if (send) m.networkBudget %= 1 / 24;
+  if (m.duel) {
+    const remote = normalizeInput(roomValues.input);
+    m.frameBudget += dt;
+    while (m.frameBudget >= STEP) { m.duel.step(m.local, remote); m.frameBudget -= STEP; }
+    const state = m.duel.state;
+    const receiver = state.actors[1 - state.server];
+    const moving = receiver.vx !== 0 || receiver.vz !== 0;
+    if (send && (m.sentEvent !== state.event.id ||
+      (m.sentFrame !== state.frame && (state.phase === 'toss' || state.phase === 'live' || state.phase === 'ready' && (moving || m.sentMoving))))) {
+      m.sentEvent = state.event.id;
+      m.sentFrame = state.frame;
+      m.sentMoving = moving;
+      m.room.sendState(state);
+    }
+  } else if (send) {
+    const latest = { x: Math.round(m.local.x * 127) / 127, z: Math.round(m.local.z * 127) / 127, hit: m.local.hit };
+    const key = `${latest.x}/${latest.z}/${latest.hit}`;
+    if (key !== m.lastInput) {
+      m.lastInput = key;
+      m.room.sendInput(latest);
+    }
+  }
+  const state = m.duel?.state || roomValues.state;
+  if (!state) { setStatus('Partie wird synchronisiert …'); return; }
+  drawDuel(state, dt);
+  fx.update(dt);
+  if (followCam) {
+    const dir = m.room.seat ? -1 : 1;
+    desiredCam.set(player.group.position.x * .61, 5.2, player.group.position.z + dir * 8.7);
+    desiredTarget.set(player.group.position.x * .3, 2.55, player.group.position.z - dir * 11);
+    fx.applyKick(desiredCam, dt);
+    camera.position.lerp(desiredCam, Math.min(1, dt * 8));
+    controls.target.lerp(desiredTarget, Math.min(1, dt * 9));
+  }
+}
+
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05); // 60fps-unabhängig, clamp bei Tab-Wechsel
+  if (!reducedMotion.matches) updateBlenderCourt(scene.userData.wimbledonStadium, clock.elapsedTime);
   if (PROBE && window.__museTennis && window.__museTennis.freeze) {
     renderer.render(scene, camera);
     return;
@@ -3601,6 +4005,12 @@ renderer.setAnimationLoop(() => {
       previewPlayer.group.scale.setScalar(sc);
       previewPlayer.group.rotation.y = Math.sin(previewT * 0.55) * 0.32;
     }
+    renderer.render(scene, camera);
+    return;
+  }
+  if (onlineMatch) {
+    updateOnline(dt);
+    controls.update();
     renderer.render(scene, camera);
     return;
   }
@@ -3645,6 +4055,7 @@ renderer.setAnimationLoop(() => {
   // Ball physics skipped while serve holds it (ready/toss) or during impact freeze
   let bounce = null;
   if (!serve.holdsBall() && !serve.frozen()) bounce = ball.update(dt);
+  ball.updateVisuals(dt);
 
   if (bounce) {
     const handled = serve.consumeBounce(bounce);
