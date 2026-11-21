@@ -6,7 +6,7 @@
   font: inherit; font-weight: 700; color: #effbff; background: #173540;
   cursor: pointer; touch-action: manipulation;
 }
-#onlineDialog button:disabled { opacity: .55; cursor: wait; }
+#onlineDialog button:disabled, .mode-actions button:disabled { opacity: .55; cursor: wait; }
 .mode-actions #startBtn {
   padding: 8px; background: #b7f4bc; color: #113d28; border-color: transparent;
   text-transform: none; letter-spacing: 0; font-size: 14px;
@@ -42,9 +42,12 @@ button:focus-visible, #onlineCode:focus-visible { outline: 3px solid #ffe566; ou
 #onlineExit { position: absolute; z-index: 8; right: calc(10px + var(--safe-r)); top: calc(10px + var(--safe-t)); }
 .menu-dock { box-sizing: border-box; max-height: 74dvh; overflow-y: auto; touch-action: pan-y; }
 .map-card .court-type { display: block; font-size: 11px; opacity: .82; margin-top: 3px; }
+#mapLoadMessage { font-size: 13px; margin: 4px 0 0; }
 html[data-map="harbor"] .menu-dock { background: #102938d9; }
 html[data-map="alpine"] .menu-dock { background: #352b22d9; }
 @media (min-width: 420px) { .menu-dock .map-picks { grid-template-columns: repeat(4, 1fr); } }
+@media (min-width: 520px) { .menu-dock .map-picks { grid-template-columns: repeat(5, 1fr); } }
+@media (max-width: 519px) { .map-card[data-map="muse-open"] { grid-column: 1 / -1; } }
 html.online-match #info, html.online-match #resetBtn { display: none; }
 html.online-match #status { max-width: min(86vw, 355px); text-align: center; }
 html.touch-ui.online-match #camBtn {

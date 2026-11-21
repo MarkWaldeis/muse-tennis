@@ -28,8 +28,9 @@ PALETTE = {
 
 
 class Arena:
-    def __init__(self, seed):
+    def __init__(self, seed, palette=PALETTE):
         self.rng = Random(seed)
+        self.palette = palette
         self.meshes = defaultdict(lambda: ([], []))
 
     def shape(self, mat, verts, faces):
@@ -154,7 +155,7 @@ class Arena:
             mat = bpy.data.materials.new(name)
             mat.use_nodes = True
             shader = mat.node_tree.nodes.get("Principled BSDF")
-            color = (*PALETTE[name], 1)
+            color = (*self.palette[name], 1)
             shader.inputs["Base Color"].default_value = color
             shader.inputs["Roughness"].default_value = .35 if name in ("metal", "glass", "water") else .86
             if name.endswith("light"):
@@ -311,5 +312,6 @@ def alpine():
     a.export("alpine-arena.glb")
 
 
-harbor()
-alpine()
+if __name__ == "__main__":
+    harbor()
+    alpine()

@@ -165,6 +165,14 @@
     #hitBtn { width: 78px; height: 78px; font-size: 26px; }
     #hitCaption { width: 78px; }
   }
+  @media (max-width: 480px) {
+    html.touch-ui:not(.online-match) #status,
+    html.touch-ui:not(.online-match) #info {
+      box-sizing: border-box;
+      max-width: calc((100% - 32px - var(--safe-l) - var(--safe-r)) / 2);
+      top: calc(86px + var(--safe-t));
+    }
+  }
   @media (max-height: 500px) {
     #joyBase { width: 96px; height: 96px; bottom: calc(12px + var(--safe-b)); }
     #hitBtn { width: 72px; height: 72px; font-size: 24px; bottom: calc(16px + var(--safe-b)); }
@@ -282,7 +290,7 @@
   html.touch-ui .map-card { padding: 12px 8px; }
   html.touch-ui .diff-card { padding: 11px 4px; }
 </style>
-<link rel="stylesheet" href="./online.css?v=2" />
+<link rel="stylesheet" href="./online.css?v=3" />
 <script>
 (function () {
   var touch = false;
@@ -338,7 +346,11 @@
         <button type="button" class="map-card" data-map="alpine" aria-pressed="false">
           <span class="char-name">Alpen</span><span class="court-type">Sand</span>
         </button>
+        <button type="button" class="map-card" data-map="muse-open" aria-pressed="false">
+          <span class="char-name">Muse Open</span><span class="court-type">Stadion · Sand</span>
+        </button>
       </div>
+      <p id="mapLoadMessage" role="status" hidden></p>
     </div>
     <div class="menu-diff">
       <p class="menu-label">KI-Stärke</p>
@@ -421,6 +433,7 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { createDuel, neutralInput, normalizeInput, STEP, tennisPoints } from './duel.js';
 import { openRoom, parseRoomCode } from './online-room.js';
 import { applyBlenderAtmosphere, createBlenderCourt, loadBlenderCourt, updateBlenderCourt } from './blender-courts.js?v=2';
+import { applyMuseOpenAtmosphere, createMuseOpen, loadMuseOpen } from './muse-open.js';
 import {
   createWimbledonStadium,
   createWimbledonLights,
@@ -430,7 +443,7 @@ import {
   DEFAULT_MAP,
   getMap,
   parseMapQuery
-} from './maps.js';
+} from './maps.js?v=2';
 import {
   applyMediterraneanAtmosphere,
   createMediterraneanArena,
@@ -717,6 +730,13 @@ async function applySelectedMap() {
   const map = getMap(selectedMap);
   const request = ++mapRequest;
   const isBlenderCourt = map.id === 'harbor' || map.id === 'alpine';
+  const message = document.getElementById('mapLoadMessage');
+  function setMapLoading(pending) {
+    document.getElementById('startBtn').disabled = pending;
+    document.getElementById('onlineBtn').disabled = pending;
+    message.hidden = !pending;
+  }
+  setMapLoading(false);
   let gltf = null;
   if (!arenaCache.has(map.id) && activeArena !== map.id) {
     if (map.id === 'mediterranean') gltf = await preloadMediterraneanArena(loader);
@@ -724,6 +744,24 @@ async function applySelectedMap() {
       console.warn('Arena konnte nicht geladen werden', error);
       return null;
     });
+    if (map.id === 'muse-open') {
+      setMapLoading(true);
+      message.textContent = 'Lade Muse Open …';
+      try {
+        gltf = await loadMuseOpen(map, loader);
+      } catch (error) {
+        if (request !== mapRequest) return activeArena;
+        console.warn('Muse Open konnte nicht geladen werden', error);
+        setMapLoading(false);
+        selectedMap = activeArena || DEFAULT_MAP;
+        syncMapButtons();
+        if (!activeArena) await applySelectedMap();
+        message.hidden = false;
+        message.textContent = 'Muse Open konnte nicht geladen werden. Tippe auf den Platz, um es erneut zu versuchen.';
+        return activeArena;
+      }
+      if (request === mapRequest) setMapLoading(false);
+    }
   }
   if (request !== mapRequest) return activeArena;
   if (activeArena === map.id) return map.id;
@@ -736,13 +774,16 @@ async function applySelectedMap() {
   detachArenaDecor();
   activeArena = map.id;
   const D = COURT_DIMENSIONS;
-  if (isBlenderCourt) applyBlenderAtmosphere(scene, renderer, controls, map.id);
+  if (map.id === 'muse-open') applyMuseOpenAtmosphere(scene, renderer, controls);
+  else if (isBlenderCourt) applyBlenderAtmosphere(scene, renderer, controls, map.id);
   else if (map.id === 'mediterranean') applyMediterraneanAtmosphere(scene, renderer, controls);
   else applyWimbledonAtmosphere(scene, renderer, controls);
   const cached = arenaCache.get(map.id);
   if (cached) {
     for (const { parent, object } of cached.mounts) parent.add(object);
     scene.userData.wimbledonStadium = cached.stadium;
+  } else if (map.id === 'muse-open') {
+    scene.userData.wimbledonStadium = createMuseOpen(scene, gltf, isTouchPlay() || PROBE);
   } else if (isBlenderCourt) {
     scene.userData.wimbledonStadium = createBlenderCourt(scene, D, map.id, gltf, isTouchPlay() || PROBE);
   } else if (map.id === 'mediterranean') {
@@ -766,9 +807,9 @@ async function selectMap(id) {
   const map = getMap(id);
   selectedMap = map.id;
   syncMapButtons();
-  await applySelectedMap();
+  const applied = await applySelectedMap();
   applyMenuCamera();
-  return map.id;
+  return applied;
 }
 
 // ============================================================
@@ -3384,7 +3425,8 @@ const MENU_CAM = {
     look: new THREE.Vector3(0.15, 1.35, 8.8)
   },
   harbor: { pos: new THREE.Vector3(6.8, 3.6, 19.1), look: new THREE.Vector3(-.7, 1.55, 7.1) },
-  alpine: { pos: new THREE.Vector3(6.6, 3.8, 19.3), look: new THREE.Vector3(.05, 1.75, 7.5) }
+  alpine: { pos: new THREE.Vector3(6.6, 3.8, 19.3), look: new THREE.Vector3(.05, 1.75, 7.5) },
+  'muse-open': { pos: new THREE.Vector3(1.24, 5.6, 20.6), look: new THREE.Vector3(.16, 5.35, -10) }
 };
 
 function applyMenuCamera() {
@@ -3817,7 +3859,10 @@ onlineUI.onlineExit.onclick = () => {
 if (parseRoomCode(new URLSearchParams(location.search).get('room'))) showOnline();
 
 async function startOnline(lobby) {
-  await selectMap(lobby.map);
+  if (await selectMap(lobby.map) !== getMap(lobby.map).id) {
+    onlineUI.onlineMessage.textContent = 'Der Platz konnte nicht geladen werden. Tritt dem Raum erneut bei.';
+    return;
+  }
   if (matchStarted) return;
   matchStarted = true;
   const { seat } = room;
@@ -3916,6 +3961,15 @@ function drawDuel(state, dt) {
       document.getElementById('scoreGames' + key).textContent = state.games[index];
       document.getElementById('scoreSets' + key).textContent = Number(state.winner === index);
     });
+    if (selectedMap === 'muse-open') {
+      const lobby = roomValues.lobby;
+      const name = data => data?.character === 'otter' ? 'OTTER' : 'VOGEL';
+      scene.userData.wimbledonStadium.syncScore({
+        pName: name(lobby?.host), aName: name(lobby?.guest),
+        pS: Number(state.winner === 0), aS: Number(state.winner === 1),
+        pG: state.games[0], aG: state.games[1], pPts: points[0], aPts: points[1]
+      });
+    }
   }
   const yours = state.server === seat;
   if (hitCaption) {
@@ -3981,10 +4035,18 @@ function updateOnline(dt) {
     const dir = m.room.seat ? -1 : 1;
     desiredCam.set(player.group.position.x * .61, 5.2, player.group.position.z + dir * 8.7);
     desiredTarget.set(player.group.position.x * .3, 2.55, player.group.position.z - dir * 11);
+    if (selectedMap === 'muse-open') frameStadiumCamera(dir);
     fx.applyKick(desiredCam, dt);
     camera.position.lerp(desiredCam, Math.min(1, dt * 8));
     controls.target.lerp(desiredTarget, Math.min(1, dt * 9));
   }
+}
+
+function frameStadiumCamera(direction) {
+  desiredCam.x = player.group.position.x * .58;
+  desiredCam.y = 6.0;
+  desiredCam.z = direction * Math.min(22.5, desiredCam.z * direction + .75);
+  desiredTarget.y = 3.45;
 }
 
 const clock = new THREE.Clock();
@@ -4112,6 +4174,7 @@ renderer.setAnimationLoop(() => {
     fx.applyKick(desiredCam, dt);
     camera.position.lerp(desiredCam, Math.min(1, dt * 3.5));
     desiredTarget.copy(player.group.position).add(followLook);
+    if (selectedMap === 'muse-open') frameStadiumCamera(1);
     controls.target.lerp(desiredTarget, Math.min(1, dt * 4.0));
   }
   controls.update();

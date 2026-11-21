@@ -28,6 +28,11 @@ export const MAPS = Object.freeze([
     id: 'alpine', name: 'Alpen', tag: 'Sandplatz in den Alpen', surface: 'clay',
     blurb: 'Sandplatz zwischen Berghütten, Nadelwald und schneebedeckten Gipfeln',
     glb: './assets/alpine-arena.glb'
+  }),
+  Object.freeze({
+    id: 'muse-open', name: 'Muse Open', tag: 'Sandplatzstadion', surface: 'clay',
+    blurb: 'Großes Sandplatzstadion mit zwei Rängen, vollen Tribünen und Glaslogen',
+    glb: './assets/muse-open-arena.glb'
   })
 ]);
 

@@ -33,7 +33,7 @@ Ein Duell geht über einen Satz. Wirf zum Aufschlag per Leertaste oder Schlagkno
 
 - 🎬 **3D-Hauptmenü:** Court als Bühne, Charakter-Vorschau, Platzwahl, KI-Stärke und Online-Duell.
 - 🐣 **Geriggter Mascot-Spieler:** Tripo-Vogel mit Mixamo-Skeleton (Finger, Zehen, Schwanz, Kamm), volumetrischem Skinning und Tennisschläger in der Schlaghand.
-- 🏟️ **Vier Plätze:** Centre Court, Mediterranean Clay Arena, Hafenarena mit Kränen und Flutlicht sowie Alpenplatz mit Berghütten und Nadelwald. Die Plätze teilen dieselben Spielfeldmaße.
+- 🏟️ **Fünf Plätze:** Centre Court, Mediterranean Clay Arena, Hafenarena, Alpenplatz und Muse Open. **[Muse Open](https://markwaldeis.github.io/muse-tennis/?map=muse-open)** ist ein Sandplatzstadion mit zwei Tribünenrängen, Glaslogen, Publikum und digitalen Anzeigetafeln. Die Plätze teilen dieselben Spielfeldmaße.
 - 🎯 **Sichtbares Zielen:** Goldener Lande-Ring auf der gegnerischen Hälfte. WASD bzw. Stick schieben das Ziel; es bleibt beim Loslassen stehen. Beim Aufschlag klebt der Ring im diagonalen Aufschlagfeld, der Timing-Balken steuert Tempo und Genauigkeit.
 - 🎯 **Aufschlag-Mechanik:** Interaktives Aufschlag-Minigame mit Ballwurf und Sweet-Spot Timing-Balken – dieselben Ready/Toss/Strike/Follow-Animationen wie zuvor, jetzt auf dem Rasen hinter der Grundlinie.
 - ⚡ **Ballphysik & Rallye:** Schwerkraft, Luftwiderstand, Netzkollision, Doppeldotz- und Aus-Erkennung. Früh am Ball = durchgezogener Drive, spät und gestreckt = hoher, weicher Float.
@@ -70,6 +70,8 @@ muse-tennis/
 Einfach die Datei `index.html` über einen lokalen Webserver öffnen (z. B. VS Code Live Server oder `python -m http.server 8000`). Ein Datei-Doppelklick (`file://`) reicht nicht, weil das Stadion-Modul per ES-Import geladen wird.
 
 Mit `npm test` lassen sich Duellregeln, Platzkatalog und Modelle überprüfen. Die beiden neuen GLB-Modelle lassen sich mit `blender --background --python tools/export_new_courts.py` aus dem Projektordner neu erzeugen.
+
+Für das Stadionmodell von Muse Open samt Sitzplan: `blender --background --python-exit-code 1 --python tools/export_muse_open.py`. Die Zuschauer-Textur ergänzt das Modell als separater WebP-Atlas.
 
 ---
 

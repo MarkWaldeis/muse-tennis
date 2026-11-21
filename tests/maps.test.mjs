@@ -35,19 +35,50 @@ function read(rel) {
   return fs.readFileSync(path.join(ROOT, rel), 'utf8');
 }
 
-test('catalog exposes all four playable maps and keeps Wimbledon as default', () => {
+test('catalog exposes all five playable maps and keeps Wimbledon as default', () => {
   const ids = listMaps().map((m) => m.id);
-  assert.deepEqual(ids, ['wimbledon', 'mediterranean', 'harbor', 'alpine']);
+  assert.deepEqual(ids, ['wimbledon', 'mediterranean', 'harbor', 'alpine', 'muse-open']);
   assert.equal(DEFAULT_MAP, 'wimbledon');
   assert.equal(getMap('nope').id, 'wimbledon');
   assert.equal(isValidMap('mediterranean'), true);
   assert.equal(isValidMap('us-open'), false);
   assert.equal(nextMapId('wimbledon'), 'mediterranean');
   assert.equal(nextMapId('mediterranean'), 'harbor');
-  assert.equal(nextMapId('alpine'), 'wimbledon');
+  assert.equal(nextMapId('alpine'), 'muse-open');
+  assert.equal(nextMapId('muse-open'), 'wimbledon');
   assert.equal(getMap('mediterranean').surface, 'clay');
   assert.equal(getMap('wimbledon').surface, 'grass');
   assert.equal(getMap('mediterranean').glb, './assets/mediterranean-arena.glb');
+});
+
+test('Muse Open ships batched architecture and a valid two-tier crowd layout', () => {
+  const map = getMap('muse-open');
+  const model = fs.readFileSync(path.join(ROOT, map.glb));
+  assert.equal(map.surface, 'clay');
+  assert.equal(model.toString('ascii', 0, 4), 'glTF');
+  assert.ok(model.length < 3_500_000);
+  const gltf = JSON.parse(model.subarray(20, 20 + model.readUInt32LE(12)).toString('utf8'));
+  assert.ok(gltf.meshes.length <= 35, 'material batches limit draw calls');
+  for (const name of ['concrete', 'roof_shadow', 'screen_frame', 'green', 'burgundy']) {
+    assert.ok(gltf.meshes.some(mesh => mesh.name === name), name);
+  }
+  const seats = fs.readFileSync(path.join(ROOT, 'assets/muse-open-seats.bin'));
+  assert.equal(seats.length % 8, 0);
+  assert.ok(seats.length >= 4_000 * 8 && seats.length < 7_000 * 8);
+  let lower = 0, upper = 0;
+  for (let i = 0; i < seats.length; i += 8) {
+    const x = Math.abs(seats.readInt16LE(i)) / 100;
+    const y = seats.readInt16LE(i + 2) / 100;
+    const z = Math.abs(seats.readInt16LE(i + 4)) / 100;
+    assert.ok(x >= 10.5 || z >= 18.5, 'spectator placement stays outside court');
+    assert.ok(y >= 1 && y < 16);
+    if (y < 7) lower++;
+    else upper++;
+  }
+  assert.ok(lower >= 1_500 && upper >= 2_000);
+  const atlas = fs.readFileSync(path.join(ROOT, 'assets/muse-open-crowd.webp'));
+  assert.equal(atlas.toString('ascii', 8, 12), 'WEBP');
+  assert.ok(atlas.length < 180_000);
 });
 
 test('Blender court models keep a compact material batch and mobile download size', () => {
@@ -66,6 +97,7 @@ test('parseMapQuery only accepts catalog ids', () => {
   assert.equal(parseMapQuery('?probe=1'), DEFAULT_MAP);
   assert.equal(parseMapQuery('?map=mediterranean'), 'mediterranean');
   assert.equal(parseMapQuery('map=mediterranean&probe=1'), 'mediterranean');
+  assert.equal(parseMapQuery('?map=muse-open'), 'muse-open');
   assert.equal(parseMapQuery('?map=hacked'), DEFAULT_MAP);
 });
 
@@ -86,10 +118,12 @@ test('Mediterranean GLB is a real glTF 2.0 binary with mesh payload', () => {
 
 test('index.html wires menu map picker without changing court physics', () => {
   const html = read('index.html');
-  assert.match(html, /from '\.\/maps\.js'/);
+  assert.match(html, /from '\.\/maps\.js(?:\?v=\d+)?'/);
   assert.match(html, /from '\.\/mediterranean-arena\.js'/);
   assert.match(html, /data-map="wimbledon"/);
   assert.match(html, /data-map="mediterranean"/);
+  assert.match(html, /data-map="muse-open"/);
+  assert.match(html, /createMuseOpen/);
   assert.match(html, /function selectMap\(/);
   assert.match(html, /async function applySelectedMap\(/);
   assert.match(html, /preloadMediterraneanArena/);
